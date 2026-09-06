@@ -394,19 +394,28 @@ let FOTOS=(()=>{try{return JSON.parse(localStorage.getItem(FKEY))||{};}catch(e){
 function saveFotoLocal(id,data){FOTOS[id]=data;try{localStorage.setItem(FKEY,JSON.stringify(FOTOS));}catch(e){toast("Sem espaço para mais fotos neste dispositivo.");}}
 function getFotoLocal(id){return FOTOS[id];}
 
-/* ---------- sincronização com a base compartilhada (capability db) ---------- */
+/* ---------- sincronização com a base compartilhada ----------
+   Dois back-ends possíveis, escolhidos em tempo de execução:
+   - Supabase (se configurado em Configurações → Conexão) — funciona em qualquer host
+   - capability "db" do claude.ai (quando publicado como Artifact)
+   Sem nenhum dos dois: modo local (localStorage), 1 dispositivo.            */
 const LOCALONLY=location.protocol==="file:";
-let cloud=null,flushT=null,lastLocalWrite=0;
+const SUPAKEY="geracampo_supa_v1";
+function getSupaCfg(){try{return JSON.parse(localStorage.getItem(SUPAKEY))||null;}catch(e){return null;}}
+function setSupaCfg(c){try{c?localStorage.setItem(SUPAKEY,JSON.stringify(c)):localStorage.removeItem(SUPAKEY);}catch(e){}}
+let cloud=null,supa=null,flushT=null,lastLocalWrite=0;
 const dirty=new Set(),lastSent={};
-let SYNC={mode:LOCALONLY?"local":"conectando",ts:0};
+let SYNC={mode:"conectando",ts:0};
+function backendAtivo(){return cloud?"db":supa?"supabase":null;}
+function persistLocal(){try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){}}
 function updateSync(){
   const el=document.getElementById("dbnote");if(!el)return;
   const m=SYNC.mode;
   if(m==="local")el.textContent="Somente neste dispositivo";
-  else if(m==="conectando")el.textContent="Conectando à base compartilhada…";
+  else if(m==="conectando")el.textContent="Conectando…";
   else if(m==="pending")el.textContent="Sincronizando…";
   else if(m==="err")el.textContent="Sem conexão — dados salvos localmente";
-  else{const t=SYNC.ts?new Date(SYNC.ts).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}):"";el.textContent="Sincronizado com a equipe"+(t?" · "+t:"");}
+  else{const t=SYNC.ts?new Date(SYNC.ts).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}):"";el.textContent="Sincronizado ("+(backendAtivo()==="supabase"?"Supabase":"equipe")+")"+(t?" · "+t:"");}
 }
 function trimCol(c,arr){
   if(c==="auditoria")return arr.slice(0,300);
@@ -415,61 +424,88 @@ function trimCol(c,arr){
   return arr;
 }
 function persist(){
-  try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){}
-  if(!cloud)return;
+  persistLocal();
+  if(!backendAtivo())return;
   lastLocalWrite=Date.now();SYNC.mode="pending";updateSync();
-  clearTimeout(flushT);flushT=setTimeout(flushCloud,700);
+  clearTimeout(flushT);flushT=setTimeout(flushRemote,700);
 }
-async function flushCloud(){
-  if(!cloud)return;
+async function flushRemote(){
+  if(!backendAtivo())return;
   let ok=true;
   for(const c of COLS){
     const body=JSON.stringify(trimCol(c,DB[c]||[]));
     if(body===lastSent[c])continue;
-    if(body.length>245000){console.warn("Coleção "+c+" grande demais para sincronizar ("+body.length+" B) — mantida só localmente.");ok=false;continue;}
+    if(body.length>900000){console.warn("Coleção "+c+" muito grande ("+body.length+" B) — mantida só localmente.");ok=false;continue;}
     try{
-      await cloud.collection("estado").doc(c).set({items:JSON.parse(body),updatedAt:Date.now(),by:perfilNome()});
+      if(cloud)await cloud.collection("estado").doc(c).set({items:JSON.parse(body),updatedAt:Date.now(),by:perfilNome()});
+      else{const{error}=await supa.from("geracampo_estado").upsert({col:c,items:JSON.parse(body),updated_at:new Date().toISOString(),updated_by:perfilNome()});if(error)throw error;}
       lastSent[c]=body;
     }catch(e){ok=false;dirty.add(c);}
   }
   SYNC={mode:ok?"ok":"err",ts:Date.now()};updateSync();
 }
-async function initCloud(){
-  if(LOCALONLY||!(window.claude&&claude.use)){SYNC.mode="local";updateSync();return;}
+function aplicarRemoto(c,items,by){
+  const body=JSON.stringify(items||[]);
+  if(body===lastSent[c])return;
+  if(Date.now()-lastLocalWrite<1800)return;
+  lastSent[c]=body;DB[c]=items||[];normalizeDB();persistLocal();
+  SYNC={mode:"ok",ts:Date.now()};updateSync();
+  if(document.getElementById("modalbg"))return;
+  const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return;
+  router();
+  if(by&&by!==perfilNome())toast("Dados atualizados · "+by);
+}
+function loadSupaLib(){
+  return new Promise(res=>{
+    if(window.supabase&&window.supabase.createClient)return res(true);
+    const s=document.createElement("script");
+    s.src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+    s.onload=()=>res(!!(window.supabase&&window.supabase.createClient));
+    s.onerror=()=>res(false);
+    document.head.appendChild(s);
+  });
+}
+async function initSupabase(cfg){
+  if(!await loadSupaLib()){SYNC.mode="err";updateSync();toast("Não foi possível carregar a biblioteca do Supabase.");return false;}
+  try{
+    supa=window.supabase.createClient(cfg.url,cfg.key,{auth:{persistSession:false}});
+    const{data,error}=await supa.from("geracampo_estado").select("col,items");
+    if(error)throw error;
+    if(data&&data.length){
+      data.forEach(r=>{if(COLS.includes(r.col)){DB[r.col]=r.items||[];lastSent[r.col]=JSON.stringify(r.items||[]);}});
+      normalizeDB();persistLocal();SYNC={mode:"ok",ts:Date.now()};router();
+    }else{SYNC={mode:"ok",ts:Date.now()};await flushRemote();}
+    updateSync();
+    supa.channel("geracampo-estado")
+      .on("postgres_changes",{event:"*",schema:"public",table:"geracampo_estado"},p=>{
+        const r=p.new;if(!r||!COLS.includes(r.col))return;
+        aplicarRemoto(r.col,r.items,r.updated_by);
+      }).subscribe();
+    return true;
+  }catch(e){supa=null;SYNC.mode="err";updateSync();toast("Falha ao conectar no Supabase: "+(e.message||e));return false;}
+}
+async function initDbCapability(){
+  if(LOCALONLY||!(window.claude&&claude.use))return false;
   try{cloud=await claude.use("db");}catch(e){cloud=null;}
-  if(!cloud){SYNC.mode="local";updateSync();return;}
+  if(!cloud)return false;
   try{
     const snaps=await Promise.all(COLS.map(c=>cloud.collection("estado").doc(c).get().catch(()=>null)));
-    const any=snaps.some(s=>s&&s.exists);
-    if(any){
-      snaps.forEach((s,i)=>{
-        const c=COLS[i];
-        if(s&&s.exists){const items=(s.data()||{}).items||[];DB[c]=items;lastSent[c]=JSON.stringify(items);}
-      });
-      normalizeDB();
-      try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){}
-      SYNC={mode:"ok",ts:Date.now()};router();
-    }else{
-      await flushCloud();
-    }
+    if(snaps.some(s=>s&&s.exists)){
+      snaps.forEach((s,i)=>{const c=COLS[i];if(s&&s.exists){const items=(s.data()||{}).items||[];DB[c]=items;lastSent[c]=JSON.stringify(items);}});
+      normalizeDB();persistLocal();SYNC={mode:"ok",ts:Date.now()};router();
+    }else{await flushRemote();}
     updateSync();
     COLS.forEach(c=>cloud.collection("estado").doc(c).onSnapshot(s=>{
-      if(!s||!s.exists)return;
-      const items=(s.data()||{}).items||[];
-      const body=JSON.stringify(items);
-      if(body===lastSent[c])return;
-      if(Date.now()-lastLocalWrite<1800)return;
-      lastSent[c]=body;DB[c]=items;normalizeDB();
-      try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){}
-      SYNC={mode:"ok",ts:Date.now()};updateSync();
-      if(document.getElementById("modalbg"))return;
-      const a=document.activeElement;
-      if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return;
-      router();
-      const by=(s.data()||{}).by;
-      if(by&&by!==perfilNome())toast("Dados atualizados"+(by?" · "+by:""));
-    },err=>{SYNC.mode="err";updateSync();}));
-  }catch(e){cloud=null;SYNC.mode="err";updateSync();}
+      if(!s||!s.exists)return;const d=s.data()||{};aplicarRemoto(c,d.items,d.by);
+    },()=>{SYNC.mode="err";updateSync();}));
+    return true;
+  }catch(e){cloud=null;SYNC.mode="err";updateSync();return false;}
+}
+async function initRemote(){
+  const cfg=getSupaCfg();
+  if(cfg&&cfg.url&&cfg.key){if(await initSupabase(cfg))return;}
+  if(await initDbCapability())return;
+  SYNC.mode="local";updateSync();
 }
 function audit(acao,entidade,id,detalhe){DB.auditoria.unshift({id:uid("aud"),ts:nowISO(),usuario:perfilNome(),acao,entidade,entidadeId:id||"",detalhe:detalhe||""});persist();}
 
@@ -1877,12 +1913,50 @@ ROUTES.config=(v)=>{
         <button class="btn sm danger" id="reset">Restaurar base de teste</button>
       </div>
     </div>
+  </div>
+  <div class="panel" style="margin-top:16px"><div class="ph"><h3>Conexão com Supabase (opcional)</h3><span class="small muted" id="supastatus"></span></div>
+    <div class="pb" style="padding:16px">
+      <p class="small muted" style="margin:0 0 12px">Liga o app a um projeto Supabase para os dados serem compartilhados em tempo real entre todos que abrem o link — em qualquer host (GitHub Pages, etc.), sem login. As chaves ficam só neste navegador; não vão para o GitHub. A <b>anon key</b> é pública por natureza — use apenas para testes fechados.</p>
+      <div class="formgrid">
+        <label class="f full">URL do projeto<input id="supaurl" placeholder="https://xxxxxxxx.supabase.co"></label>
+        <label class="f full">Chave anon (public)<input id="supakey" placeholder="eyJhbGciOi..."></label>
+      </div>
+      <div class="actionbar" style="margin-top:12px">
+        <button class="btn primary" id="supaconnect">Conectar e recarregar</button>
+        <button class="btn danger" id="supadisc">Desconectar</button>
+      </div>
+      <p class="small muted" style="margin:12px 0 0">SQL para criar a tabela (rode uma vez no <i>SQL Editor</i> do Supabase):</p>
+      <pre style="background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px;font-size:11px;overflow-x:auto;white-space:pre">create table geracampo_estado (
+  col text primary key,
+  items jsonb not null default '[]',
+  updated_at timestamptz default now(),
+  updated_by text
+);
+alter table geracampo_estado enable row level security;
+create policy "acesso de teste" on geracampo_estado
+  for all to anon using (true) with check (true);
+grant all on table geracampo_estado to anon;
+alter publication supabase_realtime add table geracampo_estado;</pre>
+    </div>
   </div>`;
   const si=v.querySelector("#syncinfo");
-  si.innerHTML=LOCALONLY?"Arquivo local — dados só neste navegador."
-    :cloud?`<b style="color:var(--good)">Base compartilhada ativa.</b> Todos que abrirem o link veem e editam os mesmos dados${SYNC.ts?" · última sincronização "+fmtTime(SYNC.ts):""}. As fotos ficam no aparelho de quem as tira.`
-    :SYNC.mode==="conectando"?"Conectando à base compartilhada…"
-    :"Fora do claude.ai (ex.: GitHub Pages) os dados ficam só neste navegador. A base compartilhada só funciona na versão publicada como artifact.";
+  si.innerHTML=backendAtivo()==="supabase"?`<b style="color:var(--good)">Supabase conectado.</b> Dados compartilhados em tempo real${SYNC.ts?" · "+fmtTime(SYNC.ts):""}. As fotos ficam no aparelho de quem as tira.`
+    :cloud?`<b style="color:var(--good)">Base compartilhada (claude.ai) ativa.</b> ${SYNC.ts?"última sincronização "+fmtTime(SYNC.ts):""}`
+    :LOCALONLY?"Arquivo local — dados só neste navegador."
+    :SYNC.mode==="conectando"?"Conectando…"
+    :"Sem base compartilhada — dados só neste navegador. Configure o Supabase abaixo para compartilhar.";
+  const cfg=getSupaCfg();
+  if(cfg){v.querySelector("#supaurl").value=cfg.url||"";v.querySelector("#supakey").value=cfg.key||"";}
+  v.querySelector("#supastatus").textContent=supa?"conectado":cfg?"configurado":"não configurado";
+  v.querySelector("#supaconnect").onclick=()=>{
+    const url=v.querySelector("#supaurl").value.trim().replace(/\/+$/,"");
+    const key=v.querySelector("#supakey").value.trim();
+    if(!/^https:\/\/.+\.supabase\.co$/.test(url))return toast("URL inválida (ex.: https://xxxx.supabase.co).");
+    if(key.length<20)return toast("Cole a chave anon completa.");
+    setSupaCfg({url,key});toast("Conectando ao Supabase…");setTimeout(()=>location.reload(),400);
+  };
+  v.querySelector("#supadisc").onclick=()=>{if(confirm("Desconectar do Supabase? O app volta ao modo local neste dispositivo (os dados permanecem no Supabase)."))
+    {setSupaCfg(null);setTimeout(()=>location.reload(),200);}};
   v.querySelector("#tecAtual").onchange=e=>{VIEWER.tecnicoId=e.target.value;saveViewer();toast("Técnico ativo (neste dispositivo) alterado.");};
   v.querySelector("#addCT")&&(v.querySelector("#addCT").onclick=()=>{
     modal({title:"Novo campo técnico",body:`<div class="stack">
@@ -1894,7 +1968,7 @@ ROUTES.config=(v)=>{
   });
   v.querySelectorAll("[data-rmct]").forEach(b=>b.onclick=()=>{const c=byId("camposTecnicos",b.dataset.rmct);c.excluido={ts:nowISO(),usuario:perfilNome(),motivo:"removido em configurações"};audit("Exclusão","Campo técnico",c.id);persist();router();});
   v.querySelector("#export").onclick=()=>{toast("JSON no console.");console.log(JSON.stringify(DB,null,2));};
-  v.querySelector("#reset").onclick=()=>{if(confirm(cloud?"Restaurar a base de teste? Isso substitui os dados de TODOS que usam o link.":"Restaurar a base de teste? Os dados atuais serão perdidos."))
+  v.querySelector("#reset").onclick=()=>{if(confirm(backendAtivo()?"Restaurar a base de teste? Isso substitui os dados de TODOS que usam o link.":"Restaurar a base de teste? Os dados atuais serão perdidos."))
     {DB=seed();normalizeDB();audit("Restauração","Base de teste","");persist();toast("Base restaurada.");location.hash="#/painel";router();}};
 };
 
@@ -1933,5 +2007,5 @@ $("#themebtn").onclick=()=>{
   document.documentElement.dataset.theme=nxt;try{localStorage.setItem(THEMEKEY,nxt);}catch(e){}
 };
 router();
-initCloud();
+initRemote();
 </script>
