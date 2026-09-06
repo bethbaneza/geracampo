@@ -1,0 +1,1937 @@
+<title>GeraCampo</title>
+<meta name="description" content="App técnico de manutenção de geradores de cloro, jornada, veículos e estoque, integrado ao Bling.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#eef1f2; --surface:#ffffff; --surface-2:#f6f8f8; --surface-3:#eceff0;
+  --ink:#12201f; --ink-2:#42575a; --ink-3:#6b8184; --line:#d8dfe0; --line-2:#e7ecec;
+  --accent:#0e7490; --accent-deep:#0b5566; --accent-soft:#dbeef2; --on-accent:#ffffff;
+  --good:#15803d; --good-soft:#dcf0e1; --warn:#b45309; --warn-soft:#f7e8d3; --crit:#b91c1c; --crit-soft:#f6dede;
+  --info:#3f4d8a; --info-soft:#e2e5f3;
+  --radius:9px; --radius-sm:6px;
+  --shadow:0 1px 2px rgba(16,32,34,.06),0 8px 24px -12px rgba(16,32,34,.18);
+  --font:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  --display:"Archivo",var(--font); --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0b1214; --surface:#121e21; --surface-2:#16252a; --surface-3:#1d2f34;
+  --ink:#e8efef; --ink-2:#a7bcbe; --ink-3:#7a9195; --line:#274045; --line-2:#1e3237;
+  --accent:#3bb6cf; --accent-deep:#2a94ab; --accent-soft:#123138; --on-accent:#03191d;
+  --good:#4ec27d; --good-soft:#123727; --warn:#e0a24a; --warn-soft:#3a2c14; --crit:#e8756b; --crit-soft:#3a1d1c;
+  --info:#9aa6e0; --info-soft:#1e2340;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6);
+}}
+:root[data-theme="dark"]{
+  --ground:#0b1214; --surface:#121e21; --surface-2:#16252a; --surface-3:#1d2f34;
+  --ink:#e8efef; --ink-2:#a7bcbe; --ink-3:#7a9195; --line:#274045; --line-2:#1e3237;
+  --accent:#3bb6cf; --accent-deep:#2a94ab; --accent-soft:#123138; --on-accent:#03191d;
+  --good:#4ec27d; --good-soft:#123727; --warn:#e0a24a; --warn-soft:#3a2c14; --crit:#e8756b; --crit-soft:#3a1d1c;
+  --info:#9aa6e0; --info-soft:#1e2340;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
+h1,h2,h3,h4{font-family:var(--display);margin:0;line-height:1.2;text-wrap:balance;letter-spacing:-.01em}
+a{color:var(--accent-deep)}
+button{font:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.mono{font-family:var(--mono)}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* shell */
+.app{display:grid;grid-template-columns:224px 1fr;min-height:100vh}
+.side{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:10px;padding:18px 18px 14px}
+.brand .mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(150deg,var(--accent),var(--accent-deep));display:grid;place-items:center;color:var(--on-accent);flex:none}
+.brand b{font-family:var(--display);font-size:17px;letter-spacing:-.02em}
+.brand span{display:block;font-size:11px;color:var(--ink-3);letter-spacing:.02em}
+.nav{padding:6px 10px;overflow-y:auto;flex:1}
+.nav a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);color:var(--ink-2);text-decoration:none;font-weight:500;font-size:13.5px;margin-bottom:1px}
+.nav a .ic{width:17px;height:17px;flex:none;opacity:.85}
+.nav a:hover{background:var(--surface-2);color:var(--ink)}
+.nav a.on{background:var(--accent-soft);color:var(--accent-deep);font-weight:600}
+.nav .grp{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);padding:14px 10px 5px;font-weight:600}
+.side .foot{padding:10px 14px;border-top:1px solid var(--line);font-size:11px;color:var(--ink-3)}
+.main{min-width:0;display:flex;flex-direction:column}
+.topbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:10px 20px}
+.topbar .crumb{font-weight:600;font-family:var(--display);font-size:15px}
+.topbar .sp{flex:1}
+.rolebox{display:flex;align-items:center;gap:8px}
+.rolebox select{background:var(--surface-2);border:1px solid var(--line);color:var(--ink);border-radius:var(--radius-sm);padding:6px 8px;font:inherit;font-size:12.5px}
+.iconbtn{background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2);border-radius:var(--radius-sm);width:32px;height:32px;display:grid;place-items:center}
+.wrap{padding:22px 20px 60px;max-width:1120px;width:100%;margin:0 auto}
+.menutoggle{display:none}
+
+/* generic */
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.between{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.muted{color:var(--ink-3)}
+.small{font-size:12px}
+.stack{display:flex;flex-direction:column;gap:14px}
+.pagehead{margin-bottom:18px}
+.pagehead h1{font-size:22px}
+.pagehead p{margin:4px 0 0;color:var(--ink-2);max-width:64ch}
+
+.btn{display:inline-flex;align-items:center;gap:7px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink);border-radius:var(--radius-sm);padding:8px 13px;font-weight:500;font-size:13px;text-decoration:none}
+.btn:hover{background:var(--surface-3)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.btn.primary:hover{background:var(--accent-deep)}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--accent-deep)}
+.btn.danger{color:var(--crit);border-color:var(--crit-soft)}
+.btn.sm{padding:5px 9px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card.pad{padding:16px}
+.card h3{font-size:14px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
+.panel>.ph{padding:13px 16px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.panel>.ph h3{font-size:13.5px}
+.panel>.pb{padding:6px 0}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:13px 14px}
+.kpi .lab{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600}
+.kpi .val{font-family:var(--display);font-size:26px;font-weight:700;margin-top:5px;letter-spacing:-.02em}
+.kpi .sub{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+.kpi.warn{border-color:var(--warn-soft)} .kpi.warn .val{color:var(--warn)}
+.kpi.crit{border-color:var(--crit-soft)} .kpi.crit .val{color:var(--crit)}
+.kpi.good .val{color:var(--good)}
+
+.list{display:flex;flex-direction:column}
+.item{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line-2);text-decoration:none;color:inherit}
+.item:last-child{border-bottom:0}
+.item:hover{background:var(--surface-2)}
+.item .t{font-weight:600;font-size:13.5px}
+.item .d{font-size:12px;color:var(--ink-3)}
+.item .sp{flex:1}
+.avatar{width:34px;height:34px;border-radius:8px;background:var(--accent-soft);color:var(--accent-deep);display:grid;place-items:center;font-weight:700;font-family:var(--display);flex:none;font-size:13px}
+
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:100px;background:var(--surface-3);color:var(--ink-2);white-space:nowrap;letter-spacing:.01em}
+.pill.good{background:var(--good-soft);color:var(--good)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.crit{background:var(--crit-soft);color:var(--crit)}
+.pill.info{background:var(--info-soft);color:var(--info)}
+.pill.accent{background:var(--accent-soft);color:var(--accent-deep)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+
+table.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;padding:9px 12px;border-bottom:1px solid var(--line)}
+.tbl td{padding:9px 12px;border-bottom:1px solid var(--line-2);vertical-align:top}
+.tbl tr:last-child td{border-bottom:0}
+.tblwrap{overflow-x:auto}
+
+label.f{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;color:var(--ink-2)}
+label.f .rq{color:var(--crit)}
+input,select,textarea{font:inherit;font-size:13.5px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;width:100%}
+textarea{min-height:64px;resize:vertical}
+input[type=file]{padding:6px;font-size:12px}
+.formgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:13px}
+.formgrid .full{grid-column:1/-1}
+.searchbar{position:relative;flex:1;min-width:180px}
+.searchbar input{padding-left:32px}
+.searchbar .ic{position:absolute;left:9px;top:50%;transform:translateY(-50%);opacity:.5}
+
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:12px;padding:5px 10px;border-radius:100px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);font-weight:500}
+.chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-deep);font-weight:600}
+
+.detailgrid{display:grid;grid-template-columns:1fr;gap:16px}
+@media(min-width:900px){.detailgrid.two{grid-template-columns:1.4fr 1fr}}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px}
+.kv dt{color:var(--ink-3);font-weight:500}
+.kv dd{margin:0;font-weight:500;text-align:right}
+
+.timeline{position:relative;padding-left:20px}
+.timeline::before{content:"";position:absolute;left:5px;top:4px;bottom:4px;width:2px;background:var(--line)}
+.tl{position:relative;padding:0 0 15px}
+.tl::before{content:"";position:absolute;left:-19px;top:3px;width:10px;height:10px;border-radius:50%;background:var(--accent);border:2px solid var(--surface)}
+.tl .when{font-size:11px;color:var(--ink-3);font-family:var(--mono)}
+.tl .what{font-weight:600;font-size:13px;margin-top:1px}
+
+.flowdiag{display:flex;flex-direction:column;gap:0;font-family:var(--display);font-weight:600}
+.flowdiag .step{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:9px 12px;font-size:12.5px}
+.flowdiag .arr{align-self:center;color:var(--accent);padding:3px 0;font-size:14px}
+
+.photos{display:flex;gap:8px;flex-wrap:wrap}
+.photos img{width:74px;height:74px;object-fit:cover;border-radius:var(--radius-sm);border:1px solid var(--line)}
+.photogroup{font-size:11px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;width:100%;margin-top:4px}
+
+.modal-bg{position:fixed;inset:0;background:rgba(8,16,18,.5);display:grid;place-items:center;padding:18px;z-index:60}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);max-width:560px;width:100%;max-height:88vh;overflow:auto}
+.modal .mh{padding:15px 18px;border-bottom:1px solid var(--line-2);display:flex;justify-content:space-between;align-items:center}
+.modal .mh h3{font-size:15px}
+.modal .mb{padding:18px}
+.modal .mf{padding:14px 18px;border-top:1px solid var(--line-2);display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:var(--surface)}
+
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--ground);padding:10px 16px;border-radius:100px;font-size:13px;font-weight:500;z-index:80;box-shadow:var(--shadow)}
+
+.emptyst{text-align:center;padding:40px 20px;color:var(--ink-3)}
+.bignums{display:flex;gap:8px}
+.actionbar{display:flex;gap:8px;flex-wrap:wrap}
+
+.stepper{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.stepper .s{font-size:12px;padding:6px 12px;border-radius:100px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-3);font-weight:600}
+.stepper .s.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.stepper .s.done{background:var(--good-soft);border-color:var(--good-soft);color:var(--good)}
+
+.alertbox{border:1px solid var(--warn-soft);background:var(--warn-soft);color:var(--warn);padding:11px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;display:flex;gap:9px;align-items:flex-start}
+.alertbox.crit{border-color:var(--crit-soft);background:var(--crit-soft);color:var(--crit)}
+.alertbox.info{border-color:var(--info-soft);background:var(--info-soft);color:var(--info)}
+
+@media(max-width:860px){
+  .app{grid-template-columns:1fr}
+  .side{position:fixed;left:0;top:0;z-index:50;width:250px;transform:translateX(-100%);transition:transform .18s ease}
+  .app.navopen .side{transform:none}
+  .app.navopen::after{content:"";position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:40}
+  .menutoggle{display:grid}
+  .wrap{padding:16px 13px 60px}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* relatórios */
+.repdoc{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:26px 28px;max-width:920px}
+.rephead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:16px}
+.rephead .org{font-family:var(--display);font-weight:700;font-size:16px}
+.rephead .meta{font-size:11px;color:var(--ink-3);text-align:right;line-height:1.6}
+.repttl{font-family:var(--display);font-size:19px;font-weight:700;margin-bottom:2px}
+.repsub{font-size:12px;color:var(--ink-2);margin-bottom:16px}
+.reptotals{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.reptot{border:1px solid var(--line);border-radius:var(--radius-sm);padding:9px 11px}
+.reptot .l{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);font-weight:600}
+.reptot .n{font-family:var(--display);font-size:18px;font-weight:700;margin-top:2px}
+.repfoot{margin-top:18px;padding-top:10px;border-top:1px solid var(--line-2);font-size:10.5px;color:var(--ink-3);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.repsign{margin-top:34px;display:flex;gap:40px;flex-wrap:wrap}
+.repsign div{flex:1;min-width:180px;border-top:1px solid var(--ink-2);padding-top:5px;font-size:11px;color:var(--ink-3);text-align:center}
+
+@media print{
+  @page{margin:14mm}
+  body{background:#fff}
+  .side,.topbar,.noprint{display:none!important}
+  .app{display:block}
+  .wrap{padding:0;max-width:none}
+  .repdoc{border:0;box-shadow:none;border-radius:0;padding:0;max-width:none}
+  .repdoc,.rephead,.reptot,.tbl th,.tbl td{color:#000!important}
+  .tbl th{border-bottom:1px solid #000}
+  .tbl td{border-bottom:1px solid #bbb}
+  .reptot{border-color:#999}
+  a{color:#000;text-decoration:none}
+  .repdoc tr{break-inside:avoid}
+}
+</style>
+
+<div class="app" id="app">
+  <aside class="side" id="side">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8Z"/></svg>
+      </div>
+      <div><b>GeraCampo</b><span>Manutenção &amp; campo</span></div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="foot">Camada técnica · OS oficial no <b>Bling</b><br><span id="dbnote"></span></div>
+  </aside>
+  <div class="main">
+    <div class="topbar">
+      <button class="iconbtn menutoggle" id="menutoggle" aria-label="Menu">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <span class="crumb" id="crumb">Painel</span>
+      <span class="sp"></span>
+      <div class="rolebox">
+        <span class="small muted" style="display:none" id="rlbl">Perfil</span>
+        <select id="rolesel" aria-label="Perfil ativo"></select>
+      </div>
+      <button class="iconbtn" id="themebtn" aria-label="Alternar tema">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+    </div>
+    <div class="wrap" id="view"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const KEY="geracampo_v1";
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uid=p=>p+"-"+Math.random().toString(36).slice(2,8);
+const nowISO=()=>new Date().toISOString();
+const fmtDate=d=>d?new Date(d).toLocaleDateString("pt-BR"):"—";
+const fmtDT=d=>d?new Date(d).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";
+const fmtTime=d=>d?new Date(d).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}):"—";
+const money=n=>"R$ "+(Number(n)||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const km=n=>(Number(n)||0).toLocaleString("pt-BR")+" km";
+const daysBetween=(a,b)=>Math.round((new Date(b)-new Date(a))/86400000);
+let toastT;
+function toast(m){clearTimeout(toastT);let t=$("#toast");if(!t){t=document.createElement("div");t.id="toast";t.className="toast";document.body.appendChild(t);}t.textContent=m;t.style.display="block";toastT=setTimeout(()=>t.style.display="none",2600);}
+/* reduz a foto antes de guardar (economia p/ sincronização e armazenamento) */
+function compressImg(file,cb){
+  const rd=new FileReader();
+  rd.onload=()=>{
+    const img=new Image();
+    img.onload=()=>{
+      const max=900,sc=Math.min(1,max/Math.max(img.width,img.height));
+      const cv=document.createElement("canvas");cv.width=Math.round(img.width*sc);cv.height=Math.round(img.height*sc);
+      cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);
+      try{cb(cv.toDataURL("image/jpeg",0.55));}catch(e){cb(rd.result);}
+    };
+    img.onerror=()=>cb(rd.result);
+    img.src=rd.result;
+  };
+  rd.readAsDataURL(file);
+}
+
+/* ---------- perfis / permissões ---------- */
+const PERFIS={
+  tecnico:{nome:"Técnico",pode:{consultar:1,criar:1,editar:"cond",excluir:0}},
+  supervisor:{nome:"Supervisor / Gestor",pode:{consultar:1,criar:1,editar:1,excluir:0}},
+  admin:{nome:"Administrador",pode:{consultar:1,criar:1,editar:1,excluir:1}}
+};
+const can=a=>!!(PERFIS[VIEWER.perfil]?.pode[a]);
+
+/* ---------- seed ---------- */
+function seed(){
+  const t0=Date.now();
+  const d=n=>new Date(t0-n*86400000).toISOString();
+  const camposTecnicos=[
+    {id:"ct-tensao",nome:"Tensão de alimentação",tipo:"texto",obrig:true},
+    {id:"ct-celula",nome:"Modelo da célula",tipo:"texto",obrig:true},
+    {id:"ct-config",nome:"Configuração",tipo:"texto",obrig:false},
+    {id:"ct-cap",nome:"Capacidade (g/h)",tipo:"numero",obrig:false},
+    {id:"ct-corrente",nome:"Corrente (A)",tipo:"numero",obrig:false},
+    {id:"ct-tensaomed",nome:"Tensão medida (V)",tipo:"numero",obrig:false}
+  ];
+  const tecnicos=[
+    {id:"tec-1",nome:"Rafael Nunes",perfil:"tecnico"},
+    {id:"tec-2",nome:"Diego Prado",perfil:"tecnico"},
+    {id:"tec-3",nome:"Marina Alves",perfil:"supervisor"}
+  ];
+  const clientes=[
+    {id:"cli-1",criadoEm:d(120),razao:"Academia Aqua Fit Ltda",fantasia:"Aqua Fit",doc:"12.345.678/0001-90",tel:"(41) 99999-1010",email:"contato@aquafit.com",endereco:"R. das Palmeiras, 200",cidade:"Curitiba/PR",contatos:"Sr. Aldo (gerente)",obs:"Piscina semiolímpica aquecida.",blingId:"BL-3021",relacao:"locacao_assistencia"},
+    {id:"cli-2",criadoEm:d(90),razao:"Condomínio Res. Bosque Azul",fantasia:"Bosque Azul",doc:"98.765.432/0001-11",tel:"(41) 98888-2020",email:"sindico@bosqueazul.com",endereco:"Av. Central, 1500",cidade:"Pinhais/PR",contatos:"Síndica Rita",obs:"",blingId:"BL-3044",relacao:"locacao"},
+    {id:"cli-3",criadoEm:d(40),razao:"Clube Náutico Litoral",fantasia:"Náutico Litoral",doc:"04.111.222/0001-33",tel:"(41) 97777-3030",email:"manutencao@nautico.com",endereco:"Estrada da Praia, km 8",cidade:"Matinhos/PR",contatos:"Coord. Paulo",obs:"Dois conjuntos de piscina.",blingId:"BL-3050",relacao:"assistencia"}
+  ];
+  const equipamentos=[
+    {id:"eq-1",criadoEm:d(115),ns:"TESTE-001",modelo:"Modelo A",fabricante:"CloroTech",dataFab:"2022-03-01",dataInstal:d(112),status:"Ativo",clienteId:"cli-1",local:"Casa de máquinas - piscina principal",endereco:"R. das Palmeiras, 200",setor:"Piscina principal",obsInstal:"Instalado com bypass dedicado.",vinculo:"locado",classAtend:"locacao",
+      camposValores:{"ct-tensao":"220V mono","ct-celula":"CT-90","ct-config":"Autolimpante","ct-cap":"90","ct-corrente":"6.2","ct-tensaomed":"24.1"},
+      instalacoes:[{clienteId:"cli-1",inicio:d(112),fim:null}]},
+    {id:"eq-2",criadoEm:d(80),ns:"TESTE-002",modelo:"Modelo B",fabricante:"CloroTech",dataFab:"2023-01-15",dataInstal:d(74),status:"Ativo",clienteId:"cli-2",local:"Área técnica - subsolo",endereco:"Av. Central, 1500",setor:"Piscina adulto + infantil",obsInstal:"",vinculo:"locado",classAtend:"locacao",
+      camposValores:{"ct-tensao":"220V mono","ct-celula":"CT-140","ct-config":"Padrão","ct-cap":"140","ct-corrente":"8.0","ct-tensaomed":"23.6"},
+      instalacoes:[{clienteId:"cli-2",inicio:d(74),fim:null}]},
+    {id:"eq-3",criadoEm:d(200),ns:"TESTE-003",modelo:"Modelo A",fabricante:"CloroTech",dataFab:"2020-06-01",dataInstal:d(190),status:"Retirado",clienteId:"cli-3",local:"Depósito",endereco:"Estrada da Praia, km 8",setor:"—",obsInstal:"Retirado para substituição por unidade maior.",vinculo:"proprio",classAtend:"assistencia",
+      camposValores:{"ct-tensao":"127V mono","ct-celula":"CT-60","ct-config":"Padrão","ct-cap":"60","ct-corrente":"5.1","ct-tensaomed":"22.9"},
+      instalacoes:[{clienteId:"cli-3",inicio:d(190),fim:d(15)}]}
+  ];
+  const veiculos=[
+    {id:"vei-1",criadoEm:d(300),placa:"AXK-1D23",marcaModelo:"Fiat Fiorino 1.4",ano:2021,cor:"Branco",tipo:"Furgão",combustivel:"Flex",kmAtual:78450,dataAquis:"2021-02-10",situacao:"Ativo",motorista:"Rafael Nunes",obs:""},
+    {id:"vei-2",criadoEm:d(260),placa:"BRT-2E45",marcaModelo:"Renault Kangoo",ano:2019,cor:"Prata",tipo:"Furgão",combustivel:"Flex",kmAtual:132900,dataAquis:"2019-08-01",situacao:"Ativo",motorista:"Diego Prado",obs:"Revisão de freios recomendada."},
+    {id:"vei-3",criadoEm:d(120),placa:"CDE-3F67",marcaModelo:"Strada Endurance",ano:2023,cor:"Vermelho",tipo:"Picape",combustivel:"Flex",kmAtual:24100,dataAquis:"2023-05-20",situacao:"Ativo",motorista:"",obs:""}
+  ];
+  const preventivas=[
+    {id:"pv-1",veiculoId:"vei-1",tipo:"Troca de óleo",regraKm:10000,regraMeses:6,ultKm:72000,ultData:d(150)},
+    {id:"pv-2",veiculoId:"vei-1",tipo:"Filtros",regraKm:20000,regraMeses:12,ultKm:60000,ultData:d(210)},
+    {id:"pv-3",veiculoId:"vei-2",tipo:"Freios",regraKm:30000,regraMeses:18,ultKm:104000,ultData:d(220)},
+    {id:"pv-4",veiculoId:"vei-2",tipo:"Troca de óleo",regraKm:10000,regraMeses:6,ultKm:126000,ultData:d(70)},
+    {id:"pv-5",veiculoId:"vei-3",tipo:"Revisão",regraKm:20000,regraMeses:12,ultKm:10000,ultData:d(120)}
+  ];
+  const produtos=[
+    {id:"pr-1",codigo:"CEL-90",descricao:"Célula eletrolítica CT-90",referencia:"CT90",barras:"7891000000015",estoque:2,minimo:2,custo:890,fonte:"Bling"},
+    {id:"pr-2",codigo:"CEL-140",descricao:"Célula eletrolítica CT-140",referencia:"CT140",barras:"7891000000022",estoque:0,minimo:1,custo:1240,fonte:"Bling"},
+    {id:"pr-3",codigo:"SEN-FLX",descricao:"Sensor de fluxo",referencia:"SF-01",barras:"7891000000039",estoque:6,minimo:3,custo:145,fonte:"Bling"},
+    {id:"pr-4",codigo:"PLC-CTRL",descricao:"Placa de controle universal",referencia:"PC-U",barras:"7891000000046",estoque:1,minimo:1,custo:670,fonte:"Bling"},
+    {id:"pr-5",codigo:"KIT-VED",descricao:"Kit de vedação",referencia:"KV-3",barras:"7891000000053",estoque:14,minimo:5,custo:38,fonte:"Bling"}
+  ];
+  const ordens=[
+    {id:"os-1",numeroBling:"OS-24817",criadaEm:d(3),clienteId:"cli-1",descricao:"Cliente relata baixa produção de cloro.",status:"aberta",equipamentoId:null,tipoAtendimento:null,situacaoCobranca:"Não se aplica"},
+    {id:"os-2",numeroBling:"OS-24820",criadaEm:d(2),clienteId:"cli-2",descricao:"Alarme de fluxo intermitente.",status:"aberta",equipamentoId:null,tipoAtendimento:null,situacaoCobranca:"A definir"},
+    {id:"os-3",numeroBling:"OS-24790",criadaEm:d(12),clienteId:"cli-3",descricao:"Orçamento de substituição de equipamento.",status:"aguardando_retorno",equipamentoId:"eq-3",tipoAtendimento:"assistencia",situacaoCobranca:"Orçamento pendente"}
+  ];
+  const manutencoes=[
+    {id:"mnt-1",criadaEm:d(30),osId:null,numeroBlingRef:"OS-24610",clienteId:"cli-1",equipamentoId:"eq-1",tecnicoId:"tec-1",veiculoId:"vei-1",jornadaId:null,tipoAtendimento:"locacao",
+     problema:"Verificação preventiva trimestral.",diagnostico:"Célula com incrustação leve.",servico:"Limpeza química da célula e ajuste de setpoint.",
+     testes:{"ct-tensaomed":"24.0","ct-corrente":"6.0"},medicoes:{ph:"7.4",cloro:"1.8",salinidade:"3200"},
+     pecas:[{produtoId:"pr-5",qtd:1,baixa:"automatica",aprovada:true}],
+     fotos:[],obs:"Cliente orientado sobre reposição de sal.",finalizacao:"Resolvido",proximaAcao:"preventiva",proximaData:d(-60),status:"encerrada"},
+    {id:"mnt-2",criadaEm:d(9),osId:null,numeroBlingRef:"OS-24777",clienteId:"cli-2",equipamentoId:"eq-2",tecnicoId:"tec-2",veiculoId:"vei-2",jornadaId:null,tipoAtendimento:"locacao",
+     problema:"Sem geração de cloro.",diagnostico:"Sensor de fluxo com falha.",servico:"Substituição do sensor de fluxo.",
+     testes:{"ct-tensaomed":"23.5"},medicoes:{ph:"7.2",cloro:"0.4"},
+     pecas:[{produtoId:"pr-3",qtd:1,baixa:"automatica",aprovada:true}],
+     fotos:[],obs:"",finalizacao:"Resolvido",proximaAcao:"nenhuma",proximaData:null,status:"encerrada"}
+  ];
+  const solicitacoesPeca=[
+    {id:"sol-1",criadaEm:d(5),produtoNome:"Célula eletrolítica CT-140",qtd:1,osRef:"OS-24820",equipamentoId:"eq-2",motivo:"Estoque zerado no momento do atendimento.",status:"pendente"}
+  ];
+  const jornadas=[];
+  const abastecimentos=[
+    {id:"ab-1",criadoEm:d(7),posto:"Posto Trevo",dataHora:d(7),combustivel:"Gasolina",litros:38.2,valorTotal:229.20,precoLitro:6.00,docFiscal:"NFC-e 41250...8891",veiculoId:"vei-2",jornadaId:null}
+  ];
+  const auditoria=[];
+  return {schema:1,perfilAtual:"tecnico",tecnicoAtualId:"tec-1",camposTecnicos,tecnicos,clientes,equipamentos,veiculos,preventivas,produtos,ordens,manutencoes,solicitacoesPeca,jornadas,abastecimentos,auditoria};
+}
+/* perfil e técnico ficam por dispositivo (cada testador escolhe o seu, sem sincronizar) */
+const VKEY="geracampo_viewer_v1";
+const VIEWER=(()=>{try{return JSON.parse(localStorage.getItem(VKEY))||{};}catch(e){return{};}})();
+function saveViewer(){try{localStorage.setItem(VKEY,JSON.stringify(VIEWER));}catch(e){}}
+const perfilNome=()=>PERFIS[VIEWER.perfil]?.nome||"—";
+
+const COLS=["clientes","equipamentos","veiculos","preventivas","produtos","ordens","manutencoes","solicitacoesPeca","jornadas","abastecimentos","auditoria","camposTecnicos","tecnicos"];
+function normalizeDB(){if(!DB||typeof DB!=="object")DB=seed();COLS.forEach(k=>{if(!Array.isArray(DB[k]))DB[k]=[];});DB.schema=1;}
+
+let DB;
+try{DB=JSON.parse(localStorage.getItem(KEY));}catch(e){DB=null;}
+if(!DB||DB.schema!==1)DB=seed();
+normalizeDB();
+VIEWER.perfil=VIEWER.perfil||DB.perfilAtual||"tecnico";
+VIEWER.tecnicoId=VIEWER.tecnicoId||DB.tecnicoAtualId||(DB.tecnicos[0]&&DB.tecnicos[0].id);
+saveViewer();
+
+/* fotos ficam no dispositivo de quem tirou (não entram na base compartilhada) */
+const FKEY="geracampo_fotos_v1";
+let FOTOS=(()=>{try{return JSON.parse(localStorage.getItem(FKEY))||{};}catch(e){return{};}})();
+function saveFotoLocal(id,data){FOTOS[id]=data;try{localStorage.setItem(FKEY,JSON.stringify(FOTOS));}catch(e){toast("Sem espaço para mais fotos neste dispositivo.");}}
+function getFotoLocal(id){return FOTOS[id];}
+
+/* ---------- sincronização com a base compartilhada (capability db) ---------- */
+const LOCALONLY=location.protocol==="file:";
+let cloud=null,flushT=null,lastLocalWrite=0;
+const dirty=new Set(),lastSent={};
+let SYNC={mode:LOCALONLY?"local":"conectando",ts:0};
+function updateSync(){
+  const el=document.getElementById("dbnote");if(!el)return;
+  const m=SYNC.mode;
+  if(m==="local")el.textContent="Somente neste dispositivo";
+  else if(m==="conectando")el.textContent="Conectando à base compartilhada…";
+  else if(m==="pending")el.textContent="Sincronizando…";
+  else if(m==="err")el.textContent="Sem conexão — dados salvos localmente";
+  else{const t=SYNC.ts?new Date(SYNC.ts).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}):"";el.textContent="Sincronizado com a equipe"+(t?" · "+t:"");}
+}
+function trimCol(c,arr){
+  if(c==="auditoria")return arr.slice(0,300);
+  if(c==="manutencoes")return arr.map(m=>({...m,fotos:(m.fotos||[]).map(f=>({id:f.id,grupo:f.grupo,ts:f.ts}))}));
+  if(c==="jornadas")return arr.map(j=>{const o={...j};delete o.fotoPainel;delete o.fotoPainelData;return o;});
+  return arr;
+}
+function persist(){
+  try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){}
+  if(!cloud)return;
+  lastLocalWrite=Date.now();SYNC.mode="pending";updateSync();
+  clearTimeout(flushT);flushT=setTimeout(flushCloud,700);
+}
+async function flushCloud(){
+  if(!cloud)return;
+  let ok=true;
+  for(const c of COLS){
+    const body=JSON.stringify(trimCol(c,DB[c]||[]));
+    if(body===lastSent[c])continue;
+    if(body.length>245000){console.warn("Coleção "+c+" grande demais para sincronizar ("+body.length+" B) — mantida só localmente.");ok=false;continue;}
+    try{
+      await cloud.collection("estado").doc(c).set({items:JSON.parse(body),updatedAt:Date.now(),by:perfilNome()});
+      lastSent[c]=body;
+    }catch(e){ok=false;dirty.add(c);}
+  }
+  SYNC={mode:ok?"ok":"err",ts:Date.now()};updateSync();
+}
+async function initCloud(){
+  if(LOCALONLY||!(window.claude&&claude.use)){SYNC.mode="local";updateSync();return;}
+  try{cloud=await claude.use("db");}catch(e){cloud=null;}
+  if(!cloud){SYNC.mode="local";updateSync();return;}
+  try{
+    const snaps=await Promise.all(COLS.map(c=>cloud.collection("estado").doc(c).get().catch(()=>null)));
+    const any=snaps.some(s=>s&&s.exists);
+    if(any){
+      snaps.forEach((s,i)=>{
+        const c=COLS[i];
+        if(s&&s.exists){const items=(s.data()||{}).items||[];DB[c]=items;lastSent[c]=JSON.stringify(items);}
+      });
+      normalizeDB();
+      try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){}
+      SYNC={mode:"ok",ts:Date.now()};router();
+    }else{
+      await flushCloud();
+    }
+    updateSync();
+    COLS.forEach(c=>cloud.collection("estado").doc(c).onSnapshot(s=>{
+      if(!s||!s.exists)return;
+      const items=(s.data()||{}).items||[];
+      const body=JSON.stringify(items);
+      if(body===lastSent[c])return;
+      if(Date.now()-lastLocalWrite<1800)return;
+      lastSent[c]=body;DB[c]=items;normalizeDB();
+      try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){}
+      SYNC={mode:"ok",ts:Date.now()};updateSync();
+      if(document.getElementById("modalbg"))return;
+      const a=document.activeElement;
+      if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return;
+      router();
+      const by=(s.data()||{}).by;
+      if(by&&by!==perfilNome())toast("Dados atualizados"+(by?" · "+by:""));
+    },err=>{SYNC.mode="err";updateSync();}));
+  }catch(e){cloud=null;SYNC.mode="err";updateSync();}
+}
+function audit(acao,entidade,id,detalhe){DB.auditoria.unshift({id:uid("aud"),ts:nowISO(),usuario:perfilNome(),acao,entidade,entidadeId:id||"",detalhe:detalhe||""});persist();}
+
+/* ---------- helpers de domínio ---------- */
+const byId=(arr,id)=>DB[arr].find(x=>x.id===id);
+const cliNome=id=>byId("clientes",id)?.fantasia||byId("clientes",id)?.razao||"—";
+const eqNome=id=>{const e=byId("equipamentos",id);return e?e.ns+" · "+e.modelo:"—";};
+const tecNome=id=>byId("tecnicos",id)?.nome||"—";
+const veiNome=id=>{const v=byId("veiculos",id);return v?v.placa+" · "+v.marcaModelo:"—";};
+const ativo=x=>!x.excluido;
+const TIPOS_ATEND={locacao:"Locação",assistencia:"Assistência técnica",garantia:"Garantia",cortesia:"Cortesia / sem cobrança",outro:"Outro"};
+const SIT_COBRANCA=["Não se aplica","Não cobrar","A cobrar","Orçamento pendente","Orçamento aprovado","Cobrado","Faturado"];
+const STATUS_EQUIP=["Ativo","Em manutenção","Em estoque","Retirado","Descartado","Inativo"];
+const RELACAO={locacao:"Cliente de locação",assistencia:"Cliente de assistência técnica",locacao_assistencia:"Locação + assistência técnica"};
+const FINALIZACOES=["Resolvido","Resolvido parcialmente","Necessita retorno","Aguardando peça","Aguardando cliente"];
+const PROX_ACOES={nenhuma:"Nenhuma",retorno:"Retorno",preventiva:"Preventiva",monitoramento:"Monitoramento"};
+
+function tipoAtendPill(t){const c=t==="locacao"?"accent":t==="garantia"?"info":t==="assistencia"?"warn":t==="cortesia"?"good":"";return `<span class="pill ${c}">${esc(TIPOS_ATEND[t]||"—")}</span>`;}
+function osStatusPill(s){const m={aberta:["warn","Aberta"],em_atendimento:["info","Em atendimento"],aguardando_peca:["crit","Aguardando peça"],aguardando_retorno:["warn","Aguardando retorno"],encerrada:["good","Encerrada"]};const x=m[s]||["","—"];return `<span class="pill ${x[0]}"><span class="dot"></span>${x[1]}</span>`;}
+function jornadaAberta(){return DB.jornadas.find(j=>j.status==="aberta"&&j.tecnicoId===VIEWER.tecnicoId&&ativo(j));}
+
+function preventivaStatus(pv){
+  const v=byId("veiculos",pv.veiculoId);if(!v)return{label:"—",cls:""};
+  const kmRest=pv.regraKm?(pv.ultKm+pv.regraKm)-v.kmAtual:Infinity;
+  const diasRest=pv.regraMeses?daysBetween(new Date(),new Date(new Date(pv.ultData).setMonth(new Date(pv.ultData).getMonth()+pv.regraMeses))):Infinity;
+  const venc=kmRest<=0||diasRest<=0;
+  const prox=kmRest<=(pv.regraKm?pv.regraKm*0.15:0)||diasRest<=21;
+  return{kmRest,diasRest,venc,prox,label:venc?"Vencida":prox?"Próxima":"Em dia",cls:venc?"crit":prox?"warn":"good"};
+}
+
+/* ---------- indicadores ---------- */
+function ind(){
+  const now=new Date(),mes=now.getMonth(),ano=now.getFullYear();
+  const mntMes=DB.manutencoes.filter(m=>ativo(m)&&new Date(m.criadaEm).getMonth()===mes&&new Date(m.criadaEm).getFullYear()===ano);
+  const osAbertas=DB.ordens.filter(o=>ativo(o)&&o.status==="aberta");
+  const osPeca=DB.ordens.filter(o=>ativo(o)&&o.status==="aguardando_peca");
+  const osRetorno=DB.ordens.filter(o=>ativo(o)&&o.status==="aguardando_retorno");
+  const estCrit=DB.produtos.filter(p=>ativo(p)&&p.estoque<=p.minimo);
+  const solPend=DB.solicitacoesPeca.filter(s=>ativo(s)&&s.status==="pendente");
+  const prevVenc=DB.preventivas.filter(p=>ativo(p)&&preventivaStatus(p).venc);
+  const prevProx=DB.preventivas.filter(p=>ativo(p)&&!preventivaStatus(p).venc&&preventivaStatus(p).prox);
+  const kmMes=DB.jornadas.filter(j=>ativo(j)&&j.kmFinal&&new Date(j.criadaEm).getMonth()===mes).reduce((s,j)=>s+(j.kmFinal-j.kmInicial),0);
+  return{mntMes,osAbertas,osPeca,osRetorno,estCrit,solPend,prevVenc,prevProx,kmMes};
+}
+
+/* ---------- navegação ---------- */
+const NAV=[
+  {g:"Operação"},
+  {r:"painel",t:"Painel",i:"grid"},
+  {r:"jornada",t:"Jornada",i:"route"},
+  {r:"os",t:"Ordens de Serviço",i:"clipboard"},
+  {r:"manutencoes",t:"Manutenções",i:"wrench"},
+  {g:"Cadastros"},
+  {r:"clientes",t:"Clientes",i:"users"},
+  {r:"equipamentos",t:"Equipamentos / NS",i:"cpu"},
+  {r:"veiculos",t:"Veículos",i:"truck"},
+  {r:"estoque",t:"Peças & estoque",i:"box"},
+  {r:"abastecimento",t:"Abastecimento",i:"fuel"},
+  {g:"Gestão"},
+  {r:"indicadores",t:"Indicadores",i:"chart"},
+  {r:"relatorios",t:"Relatórios",i:"report"},
+  {r:"fluxo",t:"Fluxo macro",i:"flow"},
+  {r:"config",t:"Configurações",i:"sliders"},
+  {r:"auditoria",t:"Auditoria",i:"shield"}
+];
+const ICONS={
+  grid:'<path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>',
+  route:'<circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h5a4 4 0 0 0 0-8H9a4 4 0 0 1 0-8h1"/>',
+  clipboard:'<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
+  wrench:'<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2 2.3-2.3Z"/>',
+  users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+  cpu:'<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/>',
+  truck:'<path d="M10 17h4V5H2v12h3M20 17h1a1 1 0 0 0 1-1v-3.6a1 1 0 0 0-.3-.7l-2.4-2.4a1 1 0 0 0-.7-.3H14v11h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+  box:'<path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/>',
+  fuel:'<path d="M3 22h12V4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v18ZM15 8h2a2 2 0 0 1 2 2v7a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9l-4-4"/><path d="M3 10h12"/>',
+  chart:'<path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="4" width="3" height="14"/>',
+  flow:'<rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v5a3 3 0 0 0 3 3h5"/>',
+  report:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h8M8 9h2"/>',
+  sliders:'<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  shield:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>'
+};
+function renderNav(){
+  $("#nav").innerHTML=NAV.map(n=>n.g?`<div class="grp">${n.g}</div>`:
+    `<a href="#/${n.r}" data-r="${n.r}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICONS[n.i]}</svg>${n.t}</a>`).join("");
+}
+function renderRole(){
+  $("#rolesel").innerHTML=Object.entries(PERFIS).map(([k,v])=>`<option value="${k}"${k===VIEWER.perfil?" selected":""}>${v.nome}</option>`).join("");
+  updateSync();
+}
+
+/* ---------- modal ---------- */
+function modal({title,body,footer,wide}){
+  closeModal();
+  const bg=document.createElement("div");bg.className="modal-bg";bg.id="modalbg";
+  bg.innerHTML=`<div class="modal" style="${wide?'max-width:760px':''}"><div class="mh"><h3>${esc(title)}</h3><button class="iconbtn" id="modalx" aria-label="Fechar">✕</button></div><div class="mb">${body}</div>${footer?`<div class="mf">${footer}</div>`:""}</div>`;
+  document.body.appendChild(bg);
+  bg.addEventListener("mousedown",e=>{if(e.target===bg)closeModal();});
+  $("#modalx").onclick=closeModal;
+  return bg;
+}
+function closeModal(){$("#modalbg")?.remove();}
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
+
+/* ---------- exclusão (admin, com auditoria) ---------- */
+function excluir(arr,id,label,after){
+  if(!can("excluir")){toast("Somente administrador pode excluir.");return;}
+  const wrapId=uid("mot");
+  modal({title:"Excluir "+label,body:`
+    <p class="small muted">A exclusão é lógica (soft delete). O registro sai das listas mas permanece auditável.</p>
+    <label class="f">Motivo da exclusão <span class="rq">*</span>
+      <textarea id="${wrapId}" placeholder="Descreva o motivo"></textarea></label>`,
+    footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn danger" id="cfx">Excluir</button>`});
+  $("#cfx").onclick=()=>{
+    const motivo=$("#"+wrapId).value.trim();
+    if(!motivo){toast("Informe o motivo.");return;}
+    const reg=byId(arr,id);reg.excluido={ts:nowISO(),usuario:perfilNome(),motivo};
+    audit("Exclusão",label,id,motivo);persist();closeModal();toast(label+" excluído.");after&&after();
+  };
+}
+
+/* ---------- ROUTER ---------- */
+const ROUTES={};
+function router(){
+  const h=(location.hash||"#/painel").slice(2);
+  const [r,...rest]=h.split("/");
+  document.querySelectorAll("#nav a").forEach(a=>a.classList.toggle("on",a.dataset.r===r));
+  const fn=ROUTES[r]||ROUTES.painel;
+  const crumbMap={painel:"Painel",jornada:"Jornada",os:"Ordens de Serviço",manutencoes:"Manutenções",clientes:"Clientes",equipamentos:"Equipamentos / NS",veiculos:"Veículos",estoque:"Peças & estoque",abastecimento:"Abastecimento",indicadores:"Indicadores",relatorios:"Relatórios",fluxo:"Fluxo macro",config:"Configurações",auditoria:"Auditoria"};
+  $("#crumb").textContent=crumbMap[r]||"Painel";
+  $("#view").innerHTML="";
+  try{fn($("#view"),rest);}catch(e){$("#view").innerHTML=`<div class="alertbox crit">Erro ao renderizar: ${esc(e.message)}</div>`;console.error(e);}
+  $("#app").classList.remove("navopen");
+  window.scrollTo(0,0);
+}
+window.addEventListener("hashchange",router);
+
+/* ============ PAINEL ============ */
+ROUTES.painel=v=>{
+  const i=ind();const j=jornadaAberta();
+  v.innerHTML=`
+  <div class="pagehead"><h1>Painel operacional</h1>
+    <p>Visão do dia. A ordem de serviço oficial vive no Bling; aqui fica a camada técnica — jornada, atendimento, histórico e estoque de campo.</p></div>
+  ${j?`<div class="alertbox info" style="margin-bottom:16px"><span>▶</span><div>Jornada em andamento desde ${fmtTime(j.criadoEm||j.criadaEm)} · ${veiNome(j.veiculoId)} — <a href="#/jornada">abrir jornada</a></div></div>`:
+    `<div class="alertbox" style="margin-bottom:16px"><span>◔</span><div>Nenhuma jornada aberta. <a href="#/jornada">Iniciar jornada</a> para registrar deslocamentos e atendimentos.</div></div>`}
+  <div class="kpis" style="margin-bottom:20px">
+    <div class="kpi"><div class="lab">Manutenções no mês</div><div class="val tnum">${i.mntMes.length}</div><div class="sub">registros técnicos</div></div>
+    <a class="kpi ${i.osAbertas.length?"warn":""}" href="#/os" style="text-decoration:none;color:inherit"><div class="lab">OS abertas</div><div class="val tnum">${i.osAbertas.length}</div><div class="sub">aguardando vínculo/atendimento</div></a>
+    <a class="kpi ${i.osPeca.length?"crit":""}" href="#/os" style="text-decoration:none;color:inherit"><div class="lab">Aguardando peça</div><div class="val tnum">${i.osPeca.length}</div><div class="sub">OS pendentes</div></a>
+    <a class="kpi ${i.estCrit.length?"crit":"good"}" href="#/estoque" style="text-decoration:none;color:inherit"><div class="lab">Estoque crítico</div><div class="val tnum">${i.estCrit.length}</div><div class="sub">itens no/abaixo do mínimo</div></a>
+    <a class="kpi ${i.solPend.length?"warn":""}" href="#/estoque" style="text-decoration:none;color:inherit"><div class="lab">Solicitações de peça</div><div class="val tnum">${i.solPend.length}</div><div class="sub">pendentes</div></a>
+    <a class="kpi ${i.prevVenc.length?"crit":i.prevProx.length?"warn":"good"}" href="#/veiculos" style="text-decoration:none;color:inherit"><div class="lab">Preventivas vencidas</div><div class="val tnum">${i.prevVenc.length}</div><div class="sub">${i.prevProx.length} próxima(s) do vencimento</div></a>
+  </div>
+  <div class="detailgrid two">
+    <div class="panel">
+      <div class="ph"><h3>Ordens de Serviço recentes</h3><a class="btn ghost sm" href="#/os">Ver todas</a></div>
+      <div class="list">${DB.ordens.filter(ativo).slice(0,6).map(o=>`
+        <a class="item" href="#/os/${o.id}">
+          <span class="avatar">${esc((cliNome(o.clienteId)[0]||"?"))}</span>
+          <div><div class="t">${esc(o.numeroBling)} · ${esc(cliNome(o.clienteId))}</div><div class="d">${esc(o.descricao)}</div></div>
+          <span class="sp"></span>${osStatusPill(o.status)}
+        </a>`).join("")||'<div class="emptyst">Sem OS.</div>'}</div>
+    </div>
+    <div class="stack">
+      <div class="panel">
+        <div class="ph"><h3>Alertas</h3></div>
+        <div class="list">
+          ${i.estCrit.map(p=>`<div class="item"><span class="dot" style="color:var(--crit)"></span><div><div class="t">${esc(p.descricao)}</div><div class="d">Estoque ${p.estoque} · mínimo ${p.minimo}</div></div></div>`).join("")}
+          ${i.prevVenc.map(p=>`<div class="item"><span class="dot" style="color:var(--crit)"></span><div><div class="t">${esc(p.tipo)} · ${esc(byId("veiculos",p.veiculoId)?.placa)}</div><div class="d">Preventiva vencida</div></div></div>`).join("")}
+          ${i.osPeca.map(o=>`<div class="item"><span class="dot" style="color:var(--warn)"></span><div><div class="t">${esc(o.numeroBling)}</div><div class="d">OS aguardando peça</div></div></div>`).join("")}
+          ${(!i.estCrit.length&&!i.prevVenc.length&&!i.osPeca.length)?'<div class="emptyst small">Nenhum alerta ativo.</div>':""}
+        </div>
+      </div>
+      <div class="panel">
+        <div class="ph"><h3>Últimas manutenções</h3><a class="btn ghost sm" href="#/manutencoes">Ver</a></div>
+        <div class="list">${DB.manutencoes.filter(ativo).slice(0,4).map(m=>`
+          <a class="item" href="#/manutencoes/${m.id}"><div><div class="t">${esc(eqNome(m.equipamentoId))}</div><div class="d">${esc(cliNome(m.clienteId))} · ${fmtDate(m.criadaEm)}</div></div><span class="sp"></span><span class="pill ${m.status==="encerrada"?"good":"warn"}">${esc(m.finalizacao||"Em aberto")}</span></a>`).join("")||'<div class="emptyst">Sem registros.</div>'}</div>
+      </div>
+    </div>
+  </div>`;
+};
+
+/* ============ CLIENTES ============ */
+ROUTES.clientes=(v,rest)=>{
+  if(rest[0]&&rest[0]!=="novo")return clienteDetalhe(v,rest[0]);
+  if(rest[0]==="novo")return clienteForm(v,null);
+  let q="";
+  const draw=()=>{
+    const list=DB.clientes.filter(ativo).filter(c=>!q||[c.razao,c.fantasia,c.doc,c.blingId,c.cidade].join(" ").toLowerCase().includes(q.toLowerCase()));
+    v.querySelector("#clist").innerHTML=list.map(c=>{
+      const eqs=DB.equipamentos.filter(e=>ativo(e)&&e.clienteId===c.id).length;
+      const osAb=DB.ordens.filter(o=>ativo(o)&&o.clienteId===c.id&&o.status!=="encerrada").length;
+      return `<a class="item" href="#/clientes/${c.id}">
+        <span class="avatar">${esc(c.fantasia[0]||c.razao[0])}</span>
+        <div><div class="t">${esc(c.fantasia||c.razao)}</div><div class="d mono">${esc(c.doc)} · ${esc(c.cidade)} · Bling ${esc(c.blingId||"—")}</div></div>
+        <span class="sp"></span>
+        <span class="pill accent">${eqs} equip.</span>${osAb?`<span class="pill warn">${osAb} OS</span>`:""}
+      </a>`;}).join("")||'<div class="emptyst">Nenhum cliente encontrado.</div>';
+  };
+  v.innerHTML=`<div class="pagehead between"><div><h1>Clientes</h1><p>Pesquise por nome/razão social, CPF/CNPJ, código Bling ou cidade.</p></div>
+    ${can("criar")?`<a class="btn primary" href="#/clientes/novo">+ Novo cliente</a>`:""}</div>
+    <div class="row" style="margin-bottom:14px">
+      <div class="searchbar"><span class="ic">⌕</span><input id="q" placeholder="Buscar cliente…"></div>
+    </div>
+    <div class="panel"><div class="list" id="clist"></div></div>`;
+  v.querySelector("#q").oninput=e=>{q=e.target.value;draw();};
+  draw();
+};
+function clienteDetalhe(v,id){
+  const c=byId("clientes",id);if(!c||!ativo(c))return v.innerHTML='<div class="alertbox crit">Cliente não encontrado.</div>';
+  const eqs=DB.equipamentos.filter(e=>ativo(e)&&e.clienteId===id);
+  const oss=DB.ordens.filter(o=>ativo(o)&&o.clienteId===id);
+  const hist=DB.manutencoes.filter(m=>ativo(m)&&m.clienteId===id).sort((a,b)=>new Date(b.criadaEm)-new Date(a.criadaEm));
+  v.innerHTML=`
+  <div class="between" style="margin-bottom:6px"><a class="btn ghost sm" href="#/clientes">← Clientes</a>
+    <div class="actionbar">
+      ${can("editar")?`<a class="btn sm" href="#/clientes/novo?e=${id}" id="edit">Editar</a>`:""}
+      ${can("excluir")?`<button class="btn sm danger" id="del">Excluir</button>`:""}
+    </div></div>
+  <div class="pagehead"><h1>${esc(c.fantasia||c.razao)}</h1>
+    <p>${esc(c.razao)} · <span class="mono">${esc(c.doc)}</span> · <span class="pill accent">${esc(RELACAO[c.relacao]||"—")}</span></p></div>
+  <div class="kpis" style="margin-bottom:18px">
+    <div class="kpi"><div class="lab">Equipamentos</div><div class="val tnum">${eqs.length}</div></div>
+    <div class="kpi"><div class="lab">OS em andamento</div><div class="val tnum">${oss.filter(o=>o.status!=="encerrada").length}</div></div>
+    <div class="kpi"><div class="lab">Manutenções</div><div class="val tnum">${hist.length}</div></div>
+  </div>
+  <div class="detailgrid two">
+    <div class="stack">
+      <div class="panel"><div class="ph"><h3>Equipamentos do cliente</h3></div>
+        <div class="list">${eqs.map(e=>`<a class="item" href="#/equipamentos/${e.id}"><span class="avatar">NS</span><div><div class="t mono">${esc(e.ns)}</div><div class="d">${esc(e.modelo)} · ${esc(e.setor||"—")}</div></div><span class="sp"></span><span class="pill ${e.status==="Ativo"?"good":e.status==="Retirado"?"crit":""}">${esc(e.status)}</span></a>`).join("")||'<div class="emptyst small">Sem equipamentos.</div>'}</div>
+      </div>
+      <div class="panel"><div class="ph"><h3>Histórico do cliente</h3><span class="small muted">todos os equipamentos</span></div>
+        <div class="pb" style="padding:14px 16px">${hist.length?`<div class="timeline">${hist.map(m=>`
+          <div class="tl"><div class="when">${fmtDate(m.criadaEm)} · ${esc(eqNome(m.equipamentoId))}</div>
+          <div class="what"><a href="#/manutencoes/${m.id}">${esc(m.servico||m.problema||"Manutenção")}</a></div>
+          <div class="small muted">${tipoAtendPill(m.tipoAtendimento)} ${esc(m.finalizacao||"em aberto")}</div></div>`).join("")}</div>`:'<div class="emptyst small">Sem histórico.</div>'}</div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card pad"><h3 style="margin-bottom:10px">Dados</h3>
+        <dl class="kv">
+          <dt>Fantasia</dt><dd>${esc(c.fantasia||"—")}</dd>
+          <dt>Telefone</dt><dd>${esc(c.tel||"—")}</dd>
+          <dt>E-mail</dt><dd>${esc(c.email||"—")}</dd>
+          <dt>Endereço</dt><dd>${esc(c.endereco||"—")}</dd>
+          <dt>Cidade/UF</dt><dd>${esc(c.cidade||"—")}</dd>
+          <dt>Contatos</dt><dd>${esc(c.contatos||"—")}</dd>
+          <dt>Cód. Bling</dt><dd class="mono">${esc(c.blingId||"—")}</dd>
+        </dl>
+        ${c.obs?`<p class="small muted" style="margin-top:10px">${esc(c.obs)}</p>`:""}
+      </div>
+      <div class="panel"><div class="ph"><h3>OS no Bling</h3></div>
+        <div class="list">${oss.map(o=>`<a class="item" href="#/os/${o.id}"><div><div class="t">${esc(o.numeroBling)}</div><div class="d">${fmtDate(o.criadaEm)}</div></div><span class="sp"></span>${osStatusPill(o.status)}</a>`).join("")||'<div class="emptyst small">Sem OS.</div>'}</div>
+      </div>
+    </div>
+  </div>`;
+  if(can("editar"))v.querySelector("#edit").onclick=e=>{e.preventDefault();clienteForm(v,c);};
+  v.querySelector("#del")&&(v.querySelector("#del").onclick=()=>excluir("clientes",id,"Cliente",()=>location.hash="#/clientes"));
+}
+function clienteForm(v,c){
+  const e=c||{};
+  v.innerHTML=`<a class="btn ghost sm" href="#/clientes">← Cancelar</a>
+  <div class="pagehead"><h1>${c?"Editar cliente":"Novo cliente"}</h1></div>
+  <div class="card pad"><div class="formgrid">
+    <label class="f full">Razão social <span class="rq">*</span><input id="razao" value="${esc(e.razao||"")}"></label>
+    <label class="f">Nome fantasia<input id="fantasia" value="${esc(e.fantasia||"")}"></label>
+    <label class="f">CPF / CNPJ <span class="rq">*</span><input id="doc" value="${esc(e.doc||"")}"></label>
+    <label class="f">Telefone / WhatsApp<input id="tel" value="${esc(e.tel||"")}"></label>
+    <label class="f">E-mail<input id="email" value="${esc(e.email||"")}"></label>
+    <label class="f">Endereço<input id="endereco" value="${esc(e.endereco||"")}"></label>
+    <label class="f">Cidade / UF<input id="cidade" value="${esc(e.cidade||"")}"></label>
+    <label class="f">Contatos<input id="contatos" value="${esc(e.contatos||"")}"></label>
+    <label class="f">Código / ID no Bling<input id="blingId" value="${esc(e.blingId||"")}"></label>
+    <label class="f">Relação com a empresa
+      <select id="relacao">${Object.entries(RELACAO).map(([k,val])=>`<option value="${k}"${e.relacao===k?" selected":""}>${val}</option>`).join("")}</select></label>
+    <label class="f full">Observações<textarea id="obs">${esc(e.obs||"")}</textarea></label>
+  </div>
+  <div class="mf" style="border:0;padding:14px 0 0"><button class="btn" onclick="location.hash='#/clientes'">Cancelar</button><button class="btn primary" id="save">Salvar</button></div></div>`;
+  v.querySelector("#save").onclick=()=>{
+    const g=id=>v.querySelector("#"+id).value.trim();
+    if(!g("razao")||!g("doc"))return toast("Razão social e CPF/CNPJ são obrigatórios.");
+    const data={razao:g("razao"),fantasia:g("fantasia"),doc:g("doc"),tel:g("tel"),email:g("email"),endereco:g("endereco"),cidade:g("cidade"),contatos:g("contatos"),blingId:g("blingId"),relacao:v.querySelector("#relacao").value,obs:g("obs")};
+    if(c){Object.assign(c,data);audit("Edição","Cliente",c.id);}
+    else{const n={id:uid("cli"),criadoEm:nowISO(),...data};DB.clientes.unshift(n);audit("Criação","Cliente",n.id);c=n;}
+    persist();toast("Cliente salvo.");location.hash="#/clientes/"+c.id;
+  };
+}
+
+/* ============ EQUIPAMENTOS ============ */
+ROUTES.equipamentos=(v,rest)=>{
+  if(rest[0]==="novo")return equipForm(v,null);
+  if(rest[0])return equipDetalhe(v,rest[0]);
+  let q="",fstatus="";
+  const draw=()=>{
+    let list=DB.equipamentos.filter(ativo);
+    if(fstatus)list=list.filter(e=>e.status===fstatus);
+    if(q)list=list.filter(e=>[e.ns,e.modelo,e.fabricante,cliNome(e.clienteId)].join(" ").toLowerCase().includes(q.toLowerCase()));
+    v.querySelector("#elist").innerHTML=list.map(e=>`
+      <a class="item" href="#/equipamentos/${e.id}"><span class="avatar">NS</span>
+      <div><div class="t mono">${esc(e.ns)}</div><div class="d">${esc(e.modelo)} · ${esc(cliNome(e.clienteId))} · vínculo ${esc(e.vinculo)}</div></div>
+      <span class="sp"></span>${e.classAtend?tipoAtendPill(e.classAtend):""}<span class="pill ${e.status==="Ativo"?"good":e.status==="Retirado"||e.status==="Descartado"?"crit":""}">${esc(e.status)}</span></a>`).join("")||'<div class="emptyst">Nenhum equipamento.</div>';
+  };
+  v.innerHTML=`<div class="pagehead between"><div><h1>Equipamentos / NS</h1><p>O número de série é a identidade permanente do equipamento. Cadastro único; histórico acompanha o NS mesmo em troca de cliente.</p></div>
+    ${can("criar")?`<a class="btn primary" href="#/equipamentos/novo">+ Cadastrar NS</a>`:""}</div>
+  <div class="row" style="margin-bottom:12px"><div class="searchbar"><span class="ic">⌕</span><input id="q" placeholder="Buscar por NS, modelo, cliente…"></div></div>
+  <div class="chips" style="margin-bottom:14px"><button class="chip on" data-s="">Todos</button>${STATUS_EQUIP.map(s=>`<button class="chip" data-s="${s}">${s}</button>`).join("")}</div>
+  <div class="panel"><div class="list" id="elist"></div></div>`;
+  v.querySelector("#q").oninput=e=>{q=e.target.value;draw();};
+  v.querySelectorAll(".chip").forEach(ch=>ch.onclick=()=>{v.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));ch.classList.add("on");fstatus=ch.dataset.s;draw();});
+  draw();
+};
+function equipDetalhe(v,id){
+  const e=byId("equipamentos",id);if(!e||!ativo(e))return v.innerHTML='<div class="alertbox crit">Equipamento não encontrado.</div>';
+  const hist=DB.manutencoes.filter(m=>ativo(m)&&m.equipamentoId===id).sort((a,b)=>new Date(b.criadaEm)-new Date(a.criadaEm));
+  const ult=hist[0];
+  const pecasHist=hist.flatMap(m=>(m.pecas||[]).map(p=>({...p,data:m.criadaEm})));
+  const prox=hist.find(m=>m.proximaData)&&hist.filter(m=>m.proximaData).sort((a,b)=>new Date(a.proximaData)-new Date(b.proximaData))[0];
+  v.innerHTML=`
+  <div class="between" style="margin-bottom:6px"><a class="btn ghost sm" href="#/equipamentos">← Equipamentos</a>
+    <div class="actionbar">
+      ${can("editar")?`<button class="btn sm" id="edit">Editar</button>`:""}
+      ${can("editar")?`<button class="btn sm" id="transf">Transferir cliente</button><button class="btn sm" id="subst">Substituir</button>`:""}
+      ${can("excluir")?`<button class="btn sm danger" id="del">Excluir</button>`:""}
+    </div></div>
+  <div class="pagehead"><h1 class="mono">${esc(e.ns)}</h1>
+    <p>${esc(e.modelo)} · ${esc(e.fabricante)} · <span class="pill ${e.status==="Ativo"?"good":"crit"}">${esc(e.status)}</span> ${e.classAtend?tipoAtendPill(e.classAtend):""}</p></div>
+  <div class="kpis" style="margin-bottom:18px">
+    <div class="kpi"><div class="lab">Manutenções</div><div class="val tnum">${hist.length}</div></div>
+    <div class="kpi"><div class="lab">Última manutenção</div><div class="val" style="font-size:16px">${ult?fmtDate(ult.criadaEm):"—"}</div><div class="sub">${ult?esc(tecNome(ult.tecnicoId)):""}</div></div>
+    <div class="kpi"><div class="lab">Próxima ação</div><div class="val" style="font-size:16px">${prox?fmtDate(prox.proximaData):"—"}</div><div class="sub">${prox?esc(PROX_ACOES[prox.proximaAcao]||prox.proximaAcao):"nenhuma"}</div></div>
+  </div>
+  <div class="detailgrid two">
+    <div class="stack">
+      <div class="panel"><div class="ph"><h3>Histórico do equipamento</h3><span class="small muted">somente este NS</span></div>
+        <div class="pb" style="padding:14px 16px">${hist.length?`<div class="timeline">${hist.map(m=>`
+          <div class="tl"><div class="when">${fmtDate(m.criadaEm)} · OS ${esc(m.numeroBlingRef||"—")} · ${esc(tecNome(m.tecnicoId))}</div>
+          <div class="what"><a href="#/manutencoes/${m.id}">${esc(m.servico||m.problema||"Manutenção")}</a></div>
+          <div class="small muted">${tipoAtendPill(m.tipoAtendimento)} ${esc(m.finalizacao||"em aberto")}${(m.pecas||[]).length?` · ${m.pecas.length} peça(s)`:""}</div></div>`).join("")}</div>`:'<div class="emptyst small">Sem histórico técnico.</div>'}</div>
+      </div>
+      <div class="panel"><div class="ph"><h3>Histórico de peças</h3></div>
+        <div class="tblwrap"><table class="tbl"><thead><tr><th>Data</th><th>Peça</th><th>Qtd</th></tr></thead><tbody>
+        ${pecasHist.map(p=>`<tr><td>${fmtDate(p.data)}</td><td>${esc(byId("produtos",p.produtoId)?.descricao||"—")}</td><td class="tnum">${p.qtd}</td></tr>`).join("")||'<tr><td colspan="3" class="muted">Nenhuma peça registrada.</td></tr>'}
+        </tbody></table></div>
+      </div>
+      <div class="panel"><div class="ph"><h3>Instalações / clientes anteriores</h3></div>
+        <div class="tblwrap"><table class="tbl"><thead><tr><th>Cliente</th><th>Início</th><th>Fim</th></tr></thead><tbody>
+        ${(e.instalacoes||[]).map(x=>`<tr><td>${esc(cliNome(x.clienteId))}</td><td>${fmtDate(x.inicio)}</td><td>${x.fim?fmtDate(x.fim):'<span class="pill good">atual</span>'}</td></tr>`).join("")}
+        </tbody></table></div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card pad"><h3 style="margin-bottom:10px">Identificação</h3>
+        <dl class="kv">
+          <dt>Cliente atual</dt><dd><a href="#/clientes/${e.clienteId}">${esc(cliNome(e.clienteId))}</a></dd>
+          <dt>Local de instalação</dt><dd>${esc(e.local||"—")}</dd>
+          <dt>Endereço</dt><dd>${esc(e.endereco||"—")}</dd>
+          <dt>Piscina / setor</dt><dd>${esc(e.setor||"—")}</dd>
+          <dt>Tipo de vínculo</dt><dd>${esc(e.vinculo)}</dd>
+          <dt>Data de fabricação</dt><dd>${fmtDate(e.dataFab)}</dd>
+          <dt>Data de instalação</dt><dd>${fmtDate(e.dataInstal)}</dd>
+        </dl>
+        ${e.obsInstal?`<p class="small muted" style="margin-top:10px">${esc(e.obsInstal)}</p>`:""}
+      </div>
+      <div class="card pad"><h3 style="margin-bottom:10px">Características técnicas</h3>
+        <dl class="kv">${DB.camposTecnicos.filter(ativo).map(cf=>`<dt>${esc(cf.nome)}</dt><dd>${esc(e.camposValores?.[cf.id]||"—")}</dd>`).join("")}</dl>
+        <p class="small muted" style="margin-top:8px">Testes de cada visita ficam no evento da manutenção, não aqui.</p>
+      </div>
+    </div>
+  </div>`;
+  can("editar")&&(v.querySelector("#edit").onclick=()=>equipForm(v,e));
+  can("editar")&&(v.querySelector("#transf").onclick=()=>transferirEquip(e));
+  can("editar")&&(v.querySelector("#subst").onclick=()=>substituirEquip(e));
+  can("excluir")&&(v.querySelector("#del").onclick=()=>excluir("equipamentos",id,"Equipamento",()=>location.hash="#/equipamentos"));
+}
+function transferirEquip(e){
+  modal({title:"Transferir equipamento de cliente",body:`
+    <p class="small muted">O NS permanece o mesmo. O período com o cliente atual é fechado e um novo período é aberto. O histórico técnico acompanha o NS.</p>
+    <label class="f">Novo cliente
+      <select id="ncli">${DB.clientes.filter(ativo).map(c=>`<option value="${c.id}"${c.id===e.clienteId?" disabled":""}>${esc(c.fantasia||c.razao)}</option>`).join("")}</select></label>
+    <label class="f" style="margin-top:10px">Novo local de instalação<input id="nloc" value="${esc(e.local||"")}"></label>
+    <label class="f" style="margin-top:10px">Setor / piscina<input id="nset" value="${esc(e.setor||"")}"></label>`,
+    footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="ok">Transferir</button>`});
+  $("#ok").onclick=()=>{
+    const nc=$("#ncli").value;if(nc===e.clienteId)return toast("Selecione outro cliente.");
+    const inst=(e.instalacoes||[]);const cur=inst.find(x=>!x.fim);if(cur)cur.fim=nowISO();
+    inst.push({clienteId:nc,inicio:nowISO(),fim:null});
+    e.instalacoes=inst;e.clienteId=nc;e.local=$("#nloc").value.trim();e.setor=$("#nset").value.trim();
+    audit("Transferência","Equipamento",e.id,"Novo cliente: "+cliNome(nc));persist();closeModal();toast("Equipamento transferido.");router();
+  };
+}
+function substituirEquip(e){
+  modal({title:"Substituir equipamento",body:`
+    <div class="alertbox" style="margin-bottom:12px"><span>!</span><div>O NS antigo <b>${esc(e.ns)}</b> nunca é sobrescrito. Ele fica <b>Retirado</b> e relacionado ao novo NS, que recebe prontuário próprio.</div></div>
+    <div class="formgrid">
+      <label class="f">Novo NS <span class="rq">*</span><input id="nns"></label>
+      <label class="f">Modelo<input id="nmod" value="${esc(e.modelo)}"></label>
+      <label class="f">Fabricante<input id="nfab" value="${esc(e.fabricante)}"></label>
+      <label class="f">Vínculo<select id="nvinc"><option>locado</option><option>proprio</option><option>outro</option></select></label>
+    </div>`,
+    footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="ok">Criar substituto</button>`});
+  $("#ok").onclick=()=>{
+    const ns=$("#nns").value.trim();if(!ns)return toast("Informe o novo NS.");
+    if(DB.equipamentos.some(x=>x.ns===ns))return toast("Já existe equipamento com esse NS.");
+    e.status="Retirado";
+    const cur=(e.instalacoes||[]).find(x=>!x.fim);if(cur)cur.fim=nowISO();
+    const n={id:uid("eq"),criadoEm:nowISO(),ns,modelo:$("#nmod").value.trim(),fabricante:$("#nfab").value.trim(),dataFab:"",dataInstal:nowISO(),status:"Ativo",clienteId:e.clienteId,local:e.local,endereco:e.endereco,setor:e.setor,obsInstal:"Substitui "+e.ns,vinculo:$("#nvinc").value,classAtend:e.classAtend,camposValores:{},instalacoes:[{clienteId:e.clienteId,inicio:nowISO(),fim:null}],substituiId:e.id};
+    e.substituidoPorId=n.id;
+    DB.equipamentos.unshift(n);audit("Substituição","Equipamento",e.id,"Novo NS: "+ns);persist();closeModal();toast("Equipamento substituto criado.");location.hash="#/equipamentos/"+n.id;
+  };
+}
+function equipForm(v,e){
+  const x=e||{camposValores:{}};
+  v.innerHTML=`<a class="btn ghost sm" href="#/equipamentos">← Cancelar</a>
+  <div class="pagehead"><h1>${e?"Editar equipamento":"Cadastrar NS"}</h1><p>Cadastro único. Características permanentes ficam aqui; o técnico não repete isso a cada visita.</p></div>
+  <div class="card pad"><div class="formgrid">
+    <label class="f">NS (número de série) <span class="rq">*</span><input id="ns" class="mono" value="${esc(x.ns||"")}"${e?" ":""}></label>
+    <label class="f">Modelo<input id="modelo" value="${esc(x.modelo||"")}"></label>
+    <label class="f">Fabricante<input id="fabricante" value="${esc(x.fabricante||"")}"></label>
+    <label class="f">Data de fabricação<input id="dataFab" type="date" value="${esc((x.dataFab||"").slice(0,10))}"></label>
+    <label class="f">Data de instalação<input id="dataInstal" type="date" value="${esc((x.dataInstal||"").slice(0,10))}"></label>
+    <label class="f">Status<select id="status">${STATUS_EQUIP.map(s=>`<option${x.status===s?" selected":""}>${s}</option>`).join("")}</select></label>
+    <label class="f">Cliente atual<select id="clienteId">${DB.clientes.filter(ativo).map(c=>`<option value="${c.id}"${x.clienteId===c.id?" selected":""}>${esc(c.fantasia||c.razao)}</option>`).join("")}</select></label>
+    <label class="f">Tipo de vínculo<select id="vinculo"><option value="locado"${x.vinculo==="locado"?" selected":""}>locado</option><option value="proprio"${x.vinculo==="proprio"?" selected":""}>próprio</option><option value="outro"${x.vinculo==="outro"?" selected":""}>outro</option></select></label>
+    <label class="f">Classificação de atendimento<select id="classAtend"><option value="">—</option>${Object.entries(TIPOS_ATEND).map(([k,val])=>`<option value="${k}"${x.classAtend===k?" selected":""}>${val}</option>`).join("")}</select></label>
+    <label class="f">Local de instalação<input id="local" value="${esc(x.local||"")}"></label>
+    <label class="f">Endereço / localização<input id="endereco" value="${esc(x.endereco||"")}"></label>
+    <label class="f">Piscina / setor atendido<input id="setor" value="${esc(x.setor||"")}"></label>
+    <label class="f full">Observações de instalação<textarea id="obsInstal">${esc(x.obsInstal||"")}</textarea></label>
+  </div>
+  <h3 style="margin:18px 0 4px">Características técnicas</h3>
+  <p class="small muted" style="margin:0 0 12px">Campos configuráveis em <a href="#/config">Configurações</a>.</p>
+  <div class="formgrid">${DB.camposTecnicos.filter(ativo).map(cf=>`
+    <label class="f">${esc(cf.nome)}${cf.obrig?' <span class="rq">*</span>':""}
+      <input data-cf="${cf.id}" ${cf.tipo==="numero"?'type="number" step="any"':""} value="${esc(x.camposValores?.[cf.id]||"")}"></label>`).join("")}</div>
+  <div class="mf" style="border:0;padding:16px 0 0"><button class="btn" onclick="location.hash='#/equipamentos'">Cancelar</button><button class="btn primary" id="save">Salvar</button></div></div>`;
+  v.querySelector("#save").onclick=()=>{
+    const g=id=>v.querySelector("#"+id).value.trim();
+    if(!g("ns"))return toast("NS é obrigatório.");
+    if(!e&&DB.equipamentos.some(q=>q.ns===g("ns")))return toast("NS já cadastrado.");
+    const camposValores={};v.querySelectorAll("[data-cf]").forEach(inp=>camposValores[inp.dataset.cf]=inp.value.trim());
+    for(const cf of DB.camposTecnicos.filter(c=>ativo(c)&&c.obrig))if(!camposValores[cf.id])return toast("Campo obrigatório: "+cf.nome);
+    const data={ns:g("ns"),modelo:g("modelo"),fabricante:g("fabricante"),dataFab:g("dataFab"),dataInstal:g("dataInstal"),status:v.querySelector("#status").value,clienteId:v.querySelector("#clienteId").value,vinculo:v.querySelector("#vinculo").value,classAtend:v.querySelector("#classAtend").value,local:g("local"),endereco:g("endereco"),setor:g("setor"),obsInstal:g("obsInstal"),camposValores};
+    if(e){Object.assign(e,data);audit("Edição","Equipamento",e.id);persist();location.hash="#/equipamentos/"+e.id;}
+    else{const n={id:uid("eq"),criadoEm:nowISO(),...data,instalacoes:[{clienteId:data.clienteId,inicio:data.dataInstal||nowISO(),fim:null}]};DB.equipamentos.unshift(n);audit("Criação","Equipamento",n.id);persist();location.hash="#/equipamentos/"+n.id;}
+    toast("Equipamento salvo.");
+  };
+}
+
+/* ============ ORDENS DE SERVIÇO ============ */
+ROUTES.os=(v,rest)=>{
+  if(rest[0])return osDetalhe(v,rest[0]);
+  let f="todas";
+  const draw=()=>{
+    let list=DB.ordens.filter(ativo);
+    if(f!=="todas")list=list.filter(o=>o.status===f);
+    v.querySelector("#oslist").innerHTML=list.map(o=>`
+      <a class="item" href="#/os/${o.id}"><span class="avatar">OS</span>
+      <div><div class="t">${esc(o.numeroBling)} · ${esc(cliNome(o.clienteId))}</div><div class="d">${esc(o.descricao)} ${o.equipamentoId?"· "+esc(eqNome(o.equipamentoId)):""}</div></div>
+      <span class="sp"></span>${o.tipoAtendimento?tipoAtendPill(o.tipoAtendimento):""}${osStatusPill(o.status)}</a>`).join("")||'<div class="emptyst">Nenhuma OS.</div>';
+  };
+  v.innerHTML=`<div class="pagehead between"><div><h1>Ordens de Serviço</h1><p>Enquanto a integração com o <b>Bling</b> não está ligada, cadastre a OS aqui manualmente — o número do Bling é só um campo de referência. Depois a mesma tela passa a receber as OS automaticamente.</p></div>
+    ${can("criar")?`<div class="actionbar"><button class="btn primary" id="novaOS">+ Nova OS</button><button class="btn" id="import">↧ Gerar OS de exemplo</button></div>`:""}</div>
+  <div class="chips" style="margin-bottom:14px">
+    ${[["todas","Todas"],["aberta","Abertas"],["em_atendimento","Em atendimento"],["aguardando_peca","Aguardando peça"],["aguardando_retorno","Aguardando retorno"],["encerrada","Encerradas"]].map(([k,l],ix)=>`<button class="chip${ix===0?" on":""}" data-f="${k}">${l}</button>`).join("")}
+  </div>
+  <div class="panel"><div class="list" id="oslist"></div></div>`;
+  v.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{v.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));c.classList.add("on");f=c.dataset.f;draw();});
+  const nextNum=()=>{
+    const nums=DB.ordens.map(o=>parseInt(String(o.numeroBling).replace(/\D/g,""),10)).filter(n=>!isNaN(n));
+    return "OS-"+((nums.length?Math.max(...nums):24800)+1);
+  };
+  v.querySelector("#novaOS")&&(v.querySelector("#novaOS").onclick=()=>{
+    const cli=DB.clientes.filter(ativo);
+    if(!cli.length){modal({title:"Nova OS",body:'<div class="alertbox"><span>!</span><div>Cadastre ao menos um cliente antes de abrir uma OS.</div></div>',footer:`<button class="btn" onclick="closeModal()">Fechar</button><a class="btn primary" href="#/clientes/novo" onclick="closeModal()">Novo cliente</a>`});return;}
+    modal({title:"Nova Ordem de Serviço",body:`
+      <p class="small muted">Cadastro manual (substitui a importação do Bling durante os testes).</p>
+      <div class="formgrid">
+        <label class="f">Número da OS <span class="rq">*</span><input id="onum" class="mono" value="${esc(nextNum())}"></label>
+        <label class="f">Data de abertura<input id="odata" type="date" value="${new Date().toISOString().slice(0,10)}"></label>
+        <label class="f full">Cliente <span class="rq">*</span><select id="ocli">${cli.map(c=>`<option value="${c.id}">${esc(c.fantasia||c.razao)} · ${esc(c.doc)}</option>`).join("")}</select></label>
+        <label class="f full">Descrição / problema relatado<textarea id="odesc" placeholder="O que o cliente relatou"></textarea></label>
+        <label class="f full">Situação da cobrança<select id="osc">${SIT_COBRANCA.map(s=>`<option${s==="Não se aplica"?" selected":""}>${s}</option>`).join("")}</select></label>
+      </div>`,
+      footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="okOS">Criar OS</button>`});
+    $("#okOS").onclick=()=>{
+      const num=$("#onum").value.trim();
+      if(!num)return toast("Informe o número da OS.");
+      if(DB.ordens.some(o=>ativo(o)&&o.numeroBling.toLowerCase()===num.toLowerCase()))return toast("Já existe uma OS com esse número.");
+      const dt=$("#odata").value?new Date($("#odata").value+"T09:00:00").toISOString():nowISO();
+      const n={id:uid("os"),numeroBling:num,criadaEm:dt,clienteId:$("#ocli").value,descricao:$("#odesc").value.trim()||"(sem descrição)",status:"aberta",equipamentoId:null,tipoAtendimento:null,situacaoCobranca:$("#osc").value,origem:"manual"};
+      DB.ordens.unshift(n);audit("Criação","OS",n.id,"cadastro manual");persist();closeModal();toast("OS "+num+" criada.");location.hash="#/os/"+n.id;
+    };
+  });
+  v.querySelector("#import")&&(v.querySelector("#import").onclick=()=>{
+    const cli=DB.clientes.filter(ativo);if(!cli.length)return toast("Cadastre um cliente primeiro.");
+    const c=cli[Math.floor(Math.random()*cli.length)];
+    const exemplos=["Cliente relata baixa produção de cloro.","Alarme de fluxo intermitente.","Equipamento sem ligar.","Vazamento na célula.","Ruído anormal na bomba.","Revisão preventiva agendada."];
+    const n={id:uid("os"),numeroBling:nextNum(),criadaEm:nowISO(),clienteId:c.id,descricao:exemplos[Math.floor(Math.random()*exemplos.length)],status:"aberta",equipamentoId:null,tipoAtendimento:null,situacaoCobranca:"Não se aplica",origem:"exemplo"};
+    DB.ordens.unshift(n);audit("Criação","OS",n.id,"OS de exemplo");persist();toast("OS "+n.numeroBling+" criada.");draw();
+  });
+  draw();
+};
+function osDetalhe(v,id){
+  const o=byId("ordens",id);if(!o||!ativo(o))return v.innerHTML='<div class="alertbox crit">OS não encontrada.</div>';
+  const mnt=DB.manutencoes.find(m=>ativo(m)&&m.osId===id);
+  const eqsCli=DB.equipamentos.filter(e=>ativo(e)&&e.clienteId===o.clienteId);
+  const j=jornadaAberta();
+  v.innerHTML=`<a class="btn ghost sm" href="#/os">← Ordens de Serviço</a>
+  <div class="pagehead between"><div><h1>${esc(o.numeroBling)}</h1><p>${esc(cliNome(o.clienteId))} · aberta ${fmtDate(o.criadaEm)} · ${osStatusPill(o.status)}</p></div></div>
+  <div class="alertbox info" style="margin-bottom:16px"><span>ℹ</span><div>${o.origem==="manual"||o.origem==="exemplo"?`OS cadastrada manualmente (sem integração Bling). O número <b>${esc(o.numeroBling)}</b> é apenas referência; quando o Bling for ligado, basta usar o número real.`:`OS oficial no Bling. O app não cria uma segunda OS — apenas relaciona o histórico técnico a <b>${esc(o.numeroBling)}</b>.`}</div></div>
+  <div class="detailgrid two">
+    <div class="stack">
+      <div class="panel"><div class="ph"><h3>Vínculo técnico</h3></div><div class="pb" style="padding:16px">
+        <div class="stepper">
+          <span class="s ${o.equipamentoId?"done":"on"}">1 · Equipamento/NS</span>
+          <span class="s ${o.tipoAtendimento?"done":o.equipamentoId?"on":""}">2 · Tipo de atendimento</span>
+          <span class="s ${mnt?"done":o.tipoAtendimento?"on":""}">3 · Iniciar atendimento</span>
+        </div>
+        <div class="formgrid">
+          <label class="f">Cliente da OS<input value="${esc(cliNome(o.clienteId))}" disabled></label>
+          <label class="f">Equipamento / NS
+            <select id="eq"${!can("criar")?" disabled":""}><option value="">Selecionar…</option>${eqsCli.map(e=>`<option value="${e.id}"${o.equipamentoId===e.id?" selected":""}>${esc(e.ns)} · ${esc(e.modelo)}</option>`).join("")}</select></label>
+          <label class="f">Tipo de atendimento
+            <select id="ta"${!can("criar")?" disabled":""}><option value="">Selecionar…</option>${Object.entries(TIPOS_ATEND).map(([k,val])=>`<option value="${k}"${o.tipoAtendimento===k?" selected":""}>${val}</option>`).join("")}</select></label>
+          <label class="f">Situação da cobrança
+            <select id="sc"${!can("criar")?" disabled":""}>${SIT_COBRANCA.map(s=>`<option${o.situacaoCobranca===s?" selected":""}>${s}</option>`).join("")}</select></label>
+        </div>
+        <div id="nseqalert"></div>
+        <div class="actionbar" style="margin-top:14px">
+          ${can("criar")?`<button class="btn" id="savevinc">Salvar vínculo</button>`:""}
+          ${can("criar")&&!mnt?`<button class="btn primary" id="iniciar">Iniciar atendimento →</button>`:""}
+          ${mnt?`<a class="btn primary" href="#/manutencoes/${mnt.id}">Abrir manutenção</a>`:""}
+        </div>
+        ${!j&&can("criar")?`<p class="small muted" style="margin-top:8px">Sem jornada aberta — <a href="#/jornada">inicie a jornada</a> antes de iniciar o atendimento.</p>`:""}
+      </div></div>
+      ${mnt?`<div class="panel"><div class="ph"><h3>Manutenção vinculada</h3></div><div class="list">
+        <a class="item" href="#/manutencoes/${mnt.id}"><div><div class="t">${esc(mnt.servico||mnt.problema||"Registro de manutenção")}</div><div class="d">${esc(tecNome(mnt.tecnicoId))} · ${fmtDT(mnt.criadaEm)}</div></div><span class="sp"></span><span class="pill ${mnt.status==="encerrada"?"good":"warn"}">${esc(mnt.finalizacao||"Em aberto")}</span></a>
+      </div></div>`:""}
+    </div>
+    <div class="card pad"><h3 style="margin-bottom:10px">OS (Bling)</h3>
+      <dl class="kv"><dt>Número</dt><dd class="mono">${esc(o.numeroBling)}</dd><dt>Cliente</dt><dd>${esc(cliNome(o.clienteId))}</dd><dt>Aberta em</dt><dd>${fmtDate(o.criadaEm)}</dd><dt>Status</dt><dd>${o.status}</dd></dl>
+      <p class="small" style="margin-top:10px">${esc(o.descricao)}</p>
+    </div>
+  </div>`;
+  const eqSel=v.querySelector("#eq");
+  const checkNs=()=>{
+    const al=v.querySelector("#nseqalert");
+    if(eqSel&&!eqSel.value&&eqsCli.length===0)al.innerHTML='<div class="alertbox" style="margin-top:12px"><span>!</span><div>Equipamento ainda não cadastrado para este cliente. <a href="#/equipamentos/novo">Cadastrar NS</a>.</div></div>';
+    else al.innerHTML="";
+  };
+  checkNs();eqSel&&(eqSel.onchange=checkNs);
+  v.querySelector("#savevinc")&&(v.querySelector("#savevinc").onclick=()=>{
+    o.equipamentoId=eqSel.value||null;o.tipoAtendimento=v.querySelector("#ta").value||null;o.situacaoCobranca=v.querySelector("#sc").value;
+    audit("Edição","OS",o.id,"vínculo técnico");persist();toast("Vínculo salvo.");router();
+  });
+  v.querySelector("#iniciar")&&(v.querySelector("#iniciar").onclick=()=>{
+    if(!eqSel.value)return toast("Selecione o equipamento/NS.");
+    if(!v.querySelector("#ta").value)return toast("Confirme o tipo de atendimento.");
+    if(!j)return toast("Inicie a jornada primeiro.");
+    o.equipamentoId=eqSel.value;o.tipoAtendimento=v.querySelector("#ta").value;o.situacaoCobranca=v.querySelector("#sc").value;o.status="em_atendimento";
+    const m={id:uid("mnt"),criadaEm:nowISO(),osId:o.id,numeroBlingRef:o.numeroBling,clienteId:o.clienteId,equipamentoId:o.equipamentoId,tecnicoId:VIEWER.tecnicoId,veiculoId:j.veiculoId,jornadaId:j.id,tipoAtendimento:o.tipoAtendimento,problema:o.descricao||"",diagnostico:"",servico:"",testes:{},medicoes:{},pecas:[],fotos:[],obs:"",finalizacao:"",proximaAcao:"nenhuma",proximaData:null,status:"aberta",horaInicio:nowISO()};
+    DB.manutencoes.unshift(m);
+    j.eventos=j.eventos||[];j.eventos.push({tipo:"atend_inicio",ts:nowISO(),ref:o.numeroBling});
+    audit("Criação","Manutenção",m.id,"OS "+o.numeroBling);persist();location.hash="#/manutencoes/"+m.id;
+  });
+}
+
+/* ============ MANUTENÇÕES ============ */
+ROUTES.manutencoes=(v,rest)=>{
+  if(rest[0])return mntDetalhe(v,rest[0]);
+  let vis="equipamento",q="";
+  const draw=()=>{
+    let list=DB.manutencoes.filter(ativo).sort((a,b)=>new Date(b.criadaEm)-new Date(a.criadaEm));
+    if(q)list=list.filter(m=>[eqNome(m.equipamentoId),cliNome(m.clienteId),m.numeroBlingRef,m.problema,m.servico].join(" ").toLowerCase().includes(q.toLowerCase()));
+    v.querySelector("#mlist").innerHTML=list.map(m=>`
+      <a class="item" href="#/manutencoes/${m.id}"><span class="avatar">${vis==="cliente"?esc(cliNome(m.clienteId)[0]):"NS"}</span>
+      <div><div class="t">${vis==="cliente"?esc(cliNome(m.clienteId)):esc(eqNome(m.equipamentoId))}</div>
+      <div class="d">${vis==="cliente"?esc(eqNome(m.equipamentoId)):esc(cliNome(m.clienteId))} · OS ${esc(m.numeroBlingRef||"—")} · ${fmtDate(m.criadaEm)}</div></div>
+      <span class="sp"></span>${tipoAtendPill(m.tipoAtendimento)}<span class="pill ${m.status==="encerrada"?"good":"warn"}">${esc(m.finalizacao||"Em aberto")}</span></a>`).join("")||'<div class="emptyst">Nenhuma manutenção.</div>';
+  };
+  v.innerHTML=`<div class="pagehead"><h1>Manutenções</h1><p>Existe um único evento de manutenção. A mesma lista pode ser lida pela ótica do equipamento (só aquele NS) ou do cliente (todos os equipamentos). Nunca duplicado.</p></div>
+  <div class="between" style="margin-bottom:12px">
+    <div class="chips"><button class="chip on" data-v="equipamento">Ótica do equipamento</button><button class="chip" data-v="cliente">Ótica do cliente</button></div>
+    <div class="searchbar" style="max-width:280px"><span class="ic">⌕</span><input id="q" placeholder="Buscar…"></div>
+  </div>
+  <div class="panel"><div class="list" id="mlist"></div></div>`;
+  v.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{v.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));c.classList.add("on");vis=c.dataset.v;draw();});
+  v.querySelector("#q").oninput=e=>{q=e.target.value;draw();};
+  draw();
+};
+function mntDetalhe(v,id){
+  const m=byId("manutencoes",id);if(!m||!ativo(m))return v.innerHTML='<div class="alertbox crit">Manutenção não encontrada.</div>';
+  const editavel=m.status!=="encerrada"&&can("criar");
+  const eq=byId("equipamentos",m.equipamentoId);
+  const readonly=!editavel;
+  const camposTeste=DB.camposTecnicos.filter(ativo);
+  const medDefs=["ph","cloro","salinidade","temperatura"];
+  v.innerHTML=`<a class="btn ghost sm" href="#/manutencoes">← Manutenções</a>
+  <div class="pagehead between"><div><h1>Registro de manutenção</h1>
+    <p>${esc(eqNome(m.equipamentoId))} · ${esc(cliNome(m.clienteId))} · OS <span class="mono">${esc(m.numeroBlingRef||"—")}</span> · ${esc(tecNome(m.tecnicoId))}</p></div>
+    <div>${m.status==="encerrada"?`<span class="pill good">Encerrada · ${esc(m.finalizacao)}</span>`:`<span class="pill warn">Em atendimento</span>`}</div></div>
+  ${readonly&&m.status!=="encerrada"?`<div class="alertbox" style="margin-bottom:14px"><span>!</span><div>Seu perfil não pode editar este registro.</div></div>`:""}
+  <div class="detailgrid two">
+    <div class="stack">
+      <div class="card pad">
+        <h3 style="margin-bottom:12px">Ocorrência</h3>
+        <div class="stack">
+          <label class="f">Problema relatado<textarea id="problema" ${readonly?"disabled":""}>${esc(m.problema||"")}</textarea></label>
+          <label class="f">Diagnóstico<textarea id="diagnostico" ${readonly?"disabled":""}>${esc(m.diagnostico||"")}</textarea></label>
+          <label class="f">Serviço realizado<textarea id="servico" ${readonly?"disabled":""}>${esc(m.servico||"")}</textarea></label>
+        </div>
+      </div>
+      <div class="card pad">
+        <h3 style="margin-bottom:4px">Testes técnicos</h3>
+        <p class="small muted" style="margin:0 0 12px">Campos cadastrados do equipamento. Registrados neste evento — não sobrescrevem o cadastro.</p>
+        <div class="formgrid" id="testes">
+          ${camposTeste.map(cf=>`<label class="f">${esc(cf.nome)}<input data-t="${cf.id}" ${readonly?"disabled":""} value="${esc(m.testes?.[cf.id]||"")}"></label>`).join("")}
+        </div>
+        <div id="testesExtra"></div>
+        ${!readonly?`<button class="btn sm" id="addTeste" style="margin-top:10px">+ Adicionar teste</button>`:""}
+        <h3 style="margin:18px 0 8px">Medições</h3>
+        <div class="formgrid" id="medicoes">
+          ${medDefs.map(k=>`<label class="f" style="text-transform:capitalize">${k}<input data-m="${k}" ${readonly?"disabled":""} value="${esc(m.medicoes?.[k]||"")}"></label>`).join("")}
+        </div>
+      </div>
+      <div class="card pad">
+        <div class="between"><h3>Peças / materiais</h3>${!readonly?`<button class="btn sm" id="addPeca">+ Peça</button>`:""}</div>
+        <div class="tblwrap" style="margin-top:10px"><table class="tbl"><thead><tr><th>Peça</th><th>Qtd</th><th>Baixa</th><th></th></tr></thead><tbody id="pecasBody"></tbody></table></div>
+      </div>
+      <div class="card pad">
+        <h3 style="margin-bottom:10px">Fotos</h3>
+        <div class="photos" id="fotos"></div>
+        ${!readonly?`<div class="row" style="margin-top:10px">
+          <label class="btn sm">+ Antes<input type="file" accept="image/*" hidden data-g="antes" multiple></label>
+          <label class="btn sm">+ Durante<input type="file" accept="image/*" hidden data-g="durante" multiple></label>
+          <label class="btn sm">+ Depois<input type="file" accept="image/*" hidden data-g="depois" multiple></label>
+        </div>`:""}
+      </div>
+      <div class="card pad">
+        <label class="f">Observações<textarea id="obs" ${readonly?"disabled":""}>${esc(m.obs||"")}</textarea></label>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card pad">
+        <h3 style="margin-bottom:10px">Finalização</h3>
+        <label class="f">Status do atendimento
+          <select id="finalizacao" ${readonly?"disabled":""}><option value="">Selecionar…</option>${FINALIZACOES.map(f=>`<option${m.finalizacao===f?" selected":""}>${f}</option>`).join("")}</select></label>
+        <label class="f" style="margin-top:10px">Próxima ação
+          <select id="proximaAcao" ${readonly?"disabled":""}>${Object.entries(PROX_ACOES).map(([k,val])=>`<option value="${k}"${m.proximaAcao===k?" selected":""}>${val}</option>`).join("")}</select></label>
+        <label class="f" style="margin-top:10px">Agendar para<input type="date" id="proximaData" ${readonly?"disabled":""} value="${esc((m.proximaData||"").slice(0,10))}"></label>
+        <div id="finalHint"></div>
+        ${!readonly?`<div class="actionbar" style="margin-top:14px">
+          <button class="btn" id="salvarRasc">Salvar rascunho</button>
+          <button class="btn primary" id="encerrar">Encerrar atendimento</button>
+        </div>`:""}
+        ${m.status==="encerrada"&&can("editar")?`<button class="btn sm" id="reabrir" style="margin-top:12px">Reabrir</button>`:""}
+      </div>
+      <div class="card pad">
+        <h3 style="margin-bottom:10px">Contexto</h3>
+        <dl class="kv">
+          <dt>OS (Bling)</dt><dd class="mono">${esc(m.numeroBlingRef||"—")}</dd>
+          <dt>Cliente</dt><dd><a href="#/clientes/${m.clienteId}">${esc(cliNome(m.clienteId))}</a></dd>
+          <dt>Equipamento</dt><dd><a href="#/equipamentos/${m.equipamentoId}" class="mono">${esc(eq?.ns||"—")}</a></dd>
+          <dt>Tipo</dt><dd>${esc(TIPOS_ATEND[m.tipoAtendimento]||"—")}</dd>
+          <dt>Técnico</dt><dd>${esc(tecNome(m.tecnicoId))}</dd>
+          <dt>Veículo</dt><dd>${esc(m.veiculoId?veiNome(m.veiculoId):"—")}</dd>
+          <dt>Início</dt><dd>${fmtDT(m.horaInicio||m.criadaEm)}</dd>
+          ${m.horaFim?`<dt>Fim</dt><dd>${fmtDT(m.horaFim)}</dd>`:""}
+        </dl>
+      </div>
+    </div>
+  </div>`;
+
+  // peças render
+  const renderPecas=()=>{
+    v.querySelector("#pecasBody").innerHTML=(m.pecas||[]).map((p,ix)=>{
+      const pr=byId("produtos",p.produtoId);
+      return `<tr><td>${esc(pr?.descricao||"—")}<div class="small muted mono">${esc(pr?.codigo||"")}</div></td>
+      <td class="tnum">${p.qtd}</td>
+      <td>${p.baixa==="automatica"?'<span class="pill">automática</span>':p.aprovada?'<span class="pill good">aprovada</span>':'<span class="pill warn">aguarda aprovação</span>'}</td>
+      <td>${!readonly?`${p.baixa==="aprovacao"&&!p.aprovada&&can("editar")?`<button class="btn sm" data-aprova="${ix}">Aprovar</button> `:""}<button class="btn sm danger" data-rmpeca="${ix}">×</button>`:""}</td></tr>`;
+    }).join("")||'<tr><td colspan="4" class="muted">Nenhuma peça.</td></tr>';
+    v.querySelectorAll("[data-rmpeca]").forEach(b=>b.onclick=()=>{m.pecas.splice(+b.dataset.rmpeca,1);persist();renderPecas();});
+    v.querySelectorAll("[data-aprova]").forEach(b=>b.onclick=()=>{const p=m.pecas[+b.dataset.aprova];p.aprovada=true;const pr=byId("produtos",p.produtoId);if(pr)pr.estoque=Math.max(0,pr.estoque-p.qtd);audit("Aprovação","Peça",m.id,pr?.descricao);persist();renderPecas();toast("Baixa aprovada.");});
+  };
+  renderPecas();
+
+  // fotos render
+  const renderFotos=()=>{
+    const groups={antes:[],durante:[],depois:[]};
+    (m.fotos||[]).forEach((f,ix)=>groups[f.grupo||"durante"].push({...f,ix}));
+    v.querySelector("#fotos").innerHTML=Object.entries(groups).map(([g,arr])=>arr.length?`<div class="photogroup">${g}</div>`+arr.map(f=>{
+      const d=f.data||getFotoLocal(f.id);
+      const cell=d?`<img src="${d}" alt="${g}">`:`<div style="width:74px;height:74px;border-radius:var(--radius-sm);border:1px dashed var(--line);display:grid;place-items:center;text-align:center;font-size:10px;color:var(--ink-3)">foto em outro<br>dispositivo</div>`;
+      return `<div style="position:relative">${cell}${!readonly?`<button class="btn sm danger" style="position:absolute;top:2px;right:2px;padding:1px 6px" data-rmfoto="${f.ix}">×</button>`:""}</div>`;
+    }).join(""):"").join("")||'<span class="small muted">Sem fotos.</span>';
+    v.querySelectorAll("[data-rmfoto]").forEach(b=>b.onclick=()=>{m.fotos.splice(+b.dataset.rmfoto,1);persist();renderFotos();});
+  };
+  renderFotos();
+
+  const renderExtra=()=>{
+    v.querySelector("#testesExtra").innerHTML=(m.testesExtra||[]).map((t,ix)=>`<label class="f" style="margin-top:10px">${esc(t.nome)}<input data-te="${ix}" ${readonly?"disabled":""} value="${esc(t.valor||"")}"></label>`).join("");
+  };
+  renderExtra();
+
+  if(!readonly){
+    const collect=()=>{
+      m.problema=v.querySelector("#problema").value.trim();
+      m.diagnostico=v.querySelector("#diagnostico").value.trim();
+      m.servico=v.querySelector("#servico").value.trim();
+      m.obs=v.querySelector("#obs").value.trim();
+      m.testes={};v.querySelectorAll("[data-t]").forEach(i=>{if(i.value.trim())m.testes[i.dataset.t]=i.value.trim();});
+      m.medicoes={};v.querySelectorAll("[data-m]").forEach(i=>{if(i.value.trim())m.medicoes[i.dataset.m]=i.value.trim();});
+      (m.testesExtra||[]).forEach((t,ix)=>{const el=v.querySelector(`[data-te="${ix}"]`);if(el)t.valor=el.value.trim();});
+      m.finalizacao=v.querySelector("#finalizacao").value;
+      m.proximaAcao=v.querySelector("#proximaAcao").value;
+      m.proximaData=v.querySelector("#proximaData").value||null;
+    };
+    v.querySelector("#addTeste").onclick=()=>{
+      const nome=prompt("Nome do teste");if(!nome)return;
+      m.testesExtra=m.testesExtra||[];m.testesExtra.push({nome:nome.trim(),valor:""});persist();renderExtra();
+    };
+    v.querySelector("#addPeca").onclick=()=>addPecaModal(m,renderPecas);
+    v.querySelectorAll('input[type=file][data-g]').forEach(inp=>inp.onchange=e=>{
+      [...e.target.files].forEach(file=>{
+        compressImg(file,dataURL=>{const fid=uid("foto");saveFotoLocal(fid,dataURL);m.fotos=m.fotos||[];m.fotos.push({id:fid,grupo:inp.dataset.g,ts:nowISO()});persist();renderFotos();});
+      });
+    });
+    v.querySelector("#salvarRasc").onclick=()=>{collect();m.status="aberta";persist();audit("Edição","Manutenção",m.id,"rascunho");toast("Rascunho salvo.");};
+    v.querySelector("#encerrar").onclick=()=>{
+      collect();
+      if(!m.finalizacao)return toast("Selecione o status de finalização.");
+      m.status="encerrada";m.horaFim=nowISO();
+      // baixa automática de peças
+      (m.pecas||[]).forEach(p=>{if(p.baixa==="automatica"&&!p.baixado){const pr=byId("produtos",p.produtoId);if(pr)pr.estoque=Math.max(0,pr.estoque-p.qtd);p.baixado=true;}});
+      // atualiza OS
+      const o=byId("ordens",m.osId);
+      if(o){
+        if(m.finalizacao==="Aguardando peça"){o.status="aguardando_peca";criarSolicitacaoAguardandoPeca(m);}
+        else if(m.finalizacao==="Necessita retorno"||m.proximaAcao==="retorno")o.status="aguardando_retorno";
+        else if(m.finalizacao==="Aguardando cliente")o.status="aguardando_retorno";
+        else o.status="encerrada";
+      }
+      // jornada evento
+      const j=byId("jornadas",m.jornadaId);if(j){j.eventos=j.eventos||[];j.eventos.push({tipo:"atend_fim",ts:nowISO(),ref:m.numeroBlingRef});}
+      audit("Encerramento","Manutenção",m.id,m.finalizacao);persist();toast("Atendimento encerrado.");router();
+    };
+  }
+  v.querySelector("#reabrir")&&(v.querySelector("#reabrir").onclick=()=>{m.status="aberta";const o=byId("ordens",m.osId);if(o)o.status="em_atendimento";audit("Reabertura","Manutenção",m.id);persist();router();});
+  // hint
+  const fh=v.querySelector("#finalHint");
+  const upd=()=>{const val=v.querySelector("#finalizacao")?.value;if(val==="Aguardando peça")fh.innerHTML='<div class="alertbox" style="margin-top:10px"><span>!</span><div>A OS ficará <b>Aguardando peça</b> e uma solicitação de peça será aberta.</div></div>';else fh.innerHTML="";};
+  v.querySelector("#finalizacao")&&(v.querySelector("#finalizacao").onchange=upd,upd());
+}
+function addPecaModal(m,cb){
+  modal({title:"Adicionar peça",body:`
+    <div class="searchbar" style="margin-bottom:10px"><span class="ic">⌕</span><input id="pq" placeholder="Código, descrição, referência ou código de barras"></div>
+    <div class="panel" style="max-height:240px;overflow:auto"><div class="list" id="plist"></div></div>
+    <div class="row" style="margin-top:12px">
+      <label class="f" style="max-width:110px">Quantidade<input id="pqtd" type="number" value="1" min="1"></label>
+      <label class="f">Baixa de estoque<select id="pbaixa"><option value="automatica">Automática</option><option value="aprovacao">Mediante aprovação</option></select></label>
+    </div>
+    <p class="small muted" id="psel">Selecione um produto.</p>`,
+    footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="okpeca" disabled>Adicionar</button>`});
+  let sel=null;
+  const drawP=q=>{
+    const list=DB.produtos.filter(ativo).filter(p=>!q||[p.codigo,p.descricao,p.referencia,p.barras].join(" ").toLowerCase().includes(q.toLowerCase()));
+    $("#plist").innerHTML=list.map(p=>`<button class="item" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-2)" data-p="${p.id}">
+      <div><div class="t">${esc(p.descricao)}</div><div class="d mono">${esc(p.codigo)} · ref ${esc(p.referencia)} · barras ${esc(p.barras)}</div></div>
+      <span class="sp"></span><span class="pill ${p.estoque<=p.minimo?"crit":"good"}">estoque ${p.estoque}</span></button>`).join("")||'<div class="emptyst small">Nada encontrado.</div>';
+    $("#plist").querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>{
+      sel=byId("produtos",b.dataset.p);
+      $("#plist").querySelectorAll("[data-p]").forEach(x=>x.style.background="");b.style.background="var(--accent-soft)";
+      $("#okpeca").disabled=false;
+      $("#psel").innerHTML=`Selecionado: <b>${esc(sel.descricao)}</b> · estoque atual ${sel.estoque}`+(sel.estoque<=0?' · <span style="color:var(--crit)">sem estoque — registro permitido, gera solicitação</span>':"");
+    });
+  };
+  drawP("");
+  $("#pq").oninput=e=>drawP(e.target.value);
+  $("#okpeca").onclick=()=>{
+    const qtd=Math.max(1,+$("#pqtd").value||1);const baixa=$("#pbaixa").value;
+    m.pecas=m.pecas||[];m.pecas.push({produtoId:sel.id,qtd,baixa,aprovada:baixa==="automatica"});
+    if(baixa==="automatica"&&sel.estoque>0){/* baixa efetiva no encerramento */}
+    if(sel.estoque<=0){DB.solicitacoesPeca.unshift({id:uid("sol"),criadaEm:nowISO(),produtoNome:sel.descricao,qtd,osRef:m.numeroBlingRef,equipamentoId:m.equipamentoId,motivo:"Sem estoque durante o atendimento.",status:"pendente"});toast("Peça sem estoque — solicitação aberta.");}
+    audit("Uso de peça","Manutenção",m.id,sel.descricao+" x"+qtd);persist();closeModal();cb();
+  };
+}
+function criarSolicitacaoAguardandoPeca(m){
+  if(DB.solicitacoesPeca.some(s=>ativo(s)&&s.osRef===m.numeroBlingRef&&s.status==="pendente"))return;
+  DB.solicitacoesPeca.unshift({id:uid("sol"),criadaEm:nowISO(),produtoNome:"(a definir — atendimento encerrado como Aguardando peça)",qtd:1,osRef:m.numeroBlingRef,equipamentoId:m.equipamentoId,motivo:"Manutenção encerrada aguardando peça.",status:"pendente"});
+}
+
+/* ============ JORNADA ============ */
+ROUTES.jornada=(v,rest)=>{
+  if(rest[0])return jornadaDetalhe(v,rest[0]);
+  const aberta=jornadaAberta();
+  if(aberta)return jornadaDetalhe(v,aberta.id);
+  const encerradas=DB.jornadas.filter(j=>ativo(j)).sort((a,b)=>new Date(b.criadaEm)-new Date(a.criadaEm));
+  v.innerHTML=`<div class="pagehead"><h1>Jornada</h1><p>Uma jornada cobre vários clientes no mesmo dia, sem retorno à empresa entre atendimentos. Localização por eventos, não rastreamento contínuo.</p></div>
+  <div class="card pad" style="margin-bottom:16px">
+    <h3 style="margin-bottom:12px">Iniciar jornada</h3>
+    <div class="formgrid">
+      <label class="f">Técnico<select id="tec">${DB.tecnicos.map(t=>`<option value="${t.id}"${t.id===VIEWER.tecnicoId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
+      <label class="f">Papel<select id="papel"><option value="motorista">Motorista</option><option value="passageiro">Passageiro / técnico</option></select></label>
+      <label class="f">Veículo<select id="vei">${DB.veiculos.filter(x=>ativo(x)&&x.situacao==="Ativo").map(x=>`<option value="${x.id}">${esc(x.placa)} · ${esc(x.marcaModelo)} (${km(x.kmAtual)})</option>`).join("")}</select></label>
+      <label class="f">KM inicial<input id="kmi" type="number"></label>
+      <label class="f">Origem<select id="origem"><option value="empresa">Empresa</option><option value="residencia">Residência (direto ao 1º cliente)</option></select></label>
+      <label class="f">Foto do painel (opcional)<input id="painel" type="file" accept="image/*"></label>
+    </div>
+    <button class="btn primary" id="startJ" style="margin-top:14px">Iniciar jornada</button>
+  </div>
+  <div class="panel"><div class="ph"><h3>Jornadas anteriores</h3></div>
+    <div class="list">${encerradas.filter(j=>j.status==="encerrada").slice(0,10).map(j=>`
+      <a class="item" href="#/jornada/${j.id}"><div><div class="t">${fmtDate(j.criadaEm)} · ${esc(veiNome(j.veiculoId))}</div>
+      <div class="d">${km((j.kmFinal||0)-(j.kmInicial||0))} · ${(j.eventos||[]).filter(e=>e.tipo==="chegada").length} visitas</div></div>
+      <span class="sp"></span><span class="pill good">encerrada</span></a>`).join("")||'<div class="emptyst small">Nenhuma jornada anterior.</div>'}</div>
+  </div>`;
+  const veiSel=v.querySelector("#vei");
+  const setKm=()=>{const vv=byId("veiculos",veiSel.value);if(vv)v.querySelector("#kmi").value=vv.kmAtual;};
+  setKm();veiSel.onchange=setKm;
+  v.querySelector("#startJ").onclick=()=>{
+    const kmi=+v.querySelector("#kmi").value;
+    if(!kmi)return toast("Informe o KM inicial.");
+    VIEWER.tecnicoId=v.querySelector("#tec").value;saveViewer();
+    const j={id:uid("jor"),criadaEm:nowISO(),tecnicoId:VIEWER.tecnicoId,papel:v.querySelector("#papel").value,veiculoId:veiSel.value,kmInicial:kmi,kmFinal:null,origem:v.querySelector("#origem").value,status:"aberta",
+      eventos:[{tipo:"login",ts:nowISO()}]};
+    const file=v.querySelector("#painel").files[0];
+    const fin=()=>{DB.jornadas.unshift(j);audit("Início","Jornada",j.id);persist();location.hash="#/jornada/"+j.id;};
+    if(file){compressImg(file,dataURL=>{saveFotoLocal("painel_"+j.id,dataURL);j.fotoPainelId="painel_"+j.id;fin();});}else fin();
+  };
+};
+const EVT_LABEL={login:"Login / início da jornada",desloc_inicio:"Início de deslocamento",chegada:"Chegada ao cliente",atend_inicio:"Início do atendimento",atend_fim:"Fim do atendimento",almoco_inicio:"Início do almoço",almoco_fim:"Fim do almoço",retorno:"Retorno à empresa",encerramento:"Encerramento da jornada",pausa:"Pausa"};
+function jornadaDetalhe(v,id){
+  const j=byId("jornadas",id);if(!j||!ativo(j))return v.innerHTML='<div class="alertbox crit">Jornada não encontrada.</div>';
+  const aberta=j.status==="aberta";
+  const vei=byId("veiculos",j.veiculoId);
+  const mnts=DB.manutencoes.filter(m=>ativo(m)&&m.jornadaId===id);
+  const evs=(j.eventos||[]);
+  const last=evs[evs.length-1]?.tipo;
+  const emAlmoco=last==="almoco_inicio";
+  const add=(tipo,extra)=>{j.eventos.push({tipo,ts:nowISO(),...(extra||{})});audit("Evento","Jornada",id,EVT_LABEL[tipo]);persist();router();};
+  v.innerHTML=`<a class="btn ghost sm" href="#/jornada">← Jornada</a>
+  <div class="pagehead between"><div><h1>Jornada · ${fmtDate(j.criadaEm)}</h1>
+    <p>${esc(veiNome(j.veiculoId))} · ${esc(tecNome(j.tecnicoId))} (${esc(j.papel||"—")}) · origem ${esc(j.origem)}</p></div>
+    <div>${aberta?'<span class="pill warn"><span class="dot"></span>em andamento</span>':'<span class="pill good">encerrada</span>'}</div></div>
+  <div class="kpis" style="margin-bottom:18px">
+    <div class="kpi"><div class="lab">KM inicial</div><div class="val tnum" style="font-size:20px">${j.kmInicial?.toLocaleString("pt-BR")||"—"}</div></div>
+    <div class="kpi"><div class="lab">KM final</div><div class="val tnum" style="font-size:20px">${j.kmFinal?j.kmFinal.toLocaleString("pt-BR"):"—"}</div></div>
+    <div class="kpi"><div class="lab">Percorrido</div><div class="val tnum" style="font-size:20px">${j.kmFinal?km(j.kmFinal-j.kmInicial):"—"}</div></div>
+    <div class="kpi"><div class="lab">Visitas</div><div class="val tnum">${evs.filter(e=>e.tipo==="chegada").length}</div></div>
+  </div>
+  ${aberta?`<div class="card pad" style="margin-bottom:16px">
+    <h3 style="margin-bottom:6px">Ações</h3>
+    <p class="small muted" style="margin:0 0 12px">A chegada ao cliente é preferencialmente automática por evento/localização — o botão manual é contingência.</p>
+    <div class="actionbar">
+      <button class="btn" data-ev="desloc_inicio">Iniciar deslocamento</button>
+      <button class="btn" data-ev="chegada">Registrar chegada (manual)</button>
+      <button class="btn" data-ev="${emAlmoco?"almoco_fim":"almoco_inicio"}">${emAlmoco?"Fim do almoço":"Início do almoço"}</button>
+      <button class="btn" data-ev="retorno">Retorno à empresa</button>
+      <a class="btn primary" href="#/os">Selecionar OS / atender →</a>
+    </div>
+    <hr style="border:0;border-top:1px solid var(--line-2);margin:14px 0">
+    <div class="row" style="align-items:flex-end">
+      <label class="f" style="max-width:150px">KM final<input id="kmf" type="number" value="${vei?.kmAtual||""}"></label>
+      <button class="btn primary" id="encerrarJ">Encerrar jornada</button>
+    </div>
+  </div>`:""}
+  <div class="detailgrid two">
+    <div class="panel"><div class="ph"><h3>Controle de horários</h3></div><div class="pb" style="padding:14px 16px">
+      ${evs.length?`<div class="timeline">${evs.map(e=>`<div class="tl"><div class="when">${fmtTime(e.ts)}</div><div class="what">${esc(EVT_LABEL[e.tipo]||e.tipo)}${e.ref?` · <span class="mono">${esc(e.ref)}</span>`:""}</div></div>`).join("")}</div>`:'<div class="emptyst small">Sem eventos.</div>'}
+      ${j.fotoPainelId&&getFotoLocal(j.fotoPainelId)?`<div style="margin-top:12px"><div class="photogroup">Painel</div><img src="${getFotoLocal(j.fotoPainelId)}" alt="Foto do painel" style="max-width:180px;border-radius:var(--radius-sm);border:1px solid var(--line)"></div>`:""}
+    </div></div>
+    <div class="panel"><div class="ph"><h3>Atendimentos da jornada</h3></div>
+      <div class="list">${mnts.map(m=>`<a class="item" href="#/manutencoes/${m.id}"><div><div class="t">${esc(eqNome(m.equipamentoId))}</div><div class="d">${esc(cliNome(m.clienteId))} · OS ${esc(m.numeroBlingRef||"—")}</div></div><span class="sp"></span><span class="pill ${m.status==="encerrada"?"good":"warn"}">${esc(m.finalizacao||"em aberto")}</span></a>`).join("")||'<div class="emptyst small">Nenhum atendimento ainda.</div>'}</div>
+    </div>
+  </div>`;
+  v.querySelectorAll("[data-ev]").forEach(b=>b.onclick=()=>add(b.dataset.ev));
+  v.querySelector("#encerrarJ")&&(v.querySelector("#encerrarJ").onclick=()=>{
+    const kmf=+v.querySelector("#kmf").value;
+    if(!kmf||kmf<j.kmInicial)return toast("KM final inválido.");
+    if(mnts.some(m=>m.status!=="encerrada"))return toast("Há atendimento em aberto nesta jornada.");
+    j.kmFinal=kmf;j.status="encerrada";j.eventos.push({tipo:"encerramento",ts:nowISO()});
+    if(vei)vei.kmAtual=kmf;
+    audit("Encerramento","Jornada",id,km(kmf-j.kmInicial));persist();toast("Jornada encerrada.");router();
+  });
+}
+
+/* ============ VEÍCULOS ============ */
+ROUTES.veiculos=(v,rest)=>{
+  if(rest[0]==="novo")return veicForm(v,null);
+  if(rest[0])return veicDetalhe(v,rest[0]);
+  v.innerHTML=`<div class="pagehead between"><div><h1>Veículos</h1><p>Frota, preventivas por KM e/ou tempo, e alertas de vencimento.</p></div>
+    ${can("criar")?`<a class="btn primary" href="#/veiculos/novo">+ Veículo</a>`:""}</div>
+  <div class="stack">${DB.veiculos.filter(ativo).map(x=>{
+    const prevs=DB.preventivas.filter(p=>ativo(p)&&p.veiculoId===x.id);
+    const venc=prevs.filter(p=>preventivaStatus(p).venc).length;
+    const prox=prevs.filter(p=>!preventivaStatus(p).venc&&preventivaStatus(p).prox).length;
+    return `<a class="card pad" href="#/veiculos/${x.id}" style="text-decoration:none;color:inherit">
+      <div class="between"><div><h3 class="mono">${esc(x.placa)}</h3><div class="small muted">${esc(x.marcaModelo)} · ${x.ano} · ${esc(x.cor)}</div></div>
+      <div class="chips">${venc?`<span class="pill crit">${venc} vencida(s)</span>`:""}${prox?`<span class="pill warn">${prox} próxima(s)</span>`:""}${!venc&&!prox?'<span class="pill good">preventivas em dia</span>':""}</div></div>
+      <dl class="kv" style="margin-top:10px"><dt>KM atual</dt><dd class="tnum">${km(x.kmAtual)}</dd><dt>Combustível</dt><dd>${esc(x.combustivel)}</dd><dt>Motorista</dt><dd>${esc(x.motorista||"—")}</dd><dt>Situação</dt><dd>${esc(x.situacao)}</dd></dl>
+    </a>`;}).join("")}</div>`;
+};
+function veicDetalhe(v,id){
+  const x=byId("veiculos",id);if(!x||!ativo(x))return v.innerHTML='<div class="alertbox crit">Veículo não encontrado.</div>';
+  const prevs=DB.preventivas.filter(p=>ativo(p)&&p.veiculoId===id);
+  const abast=DB.abastecimentos.filter(a=>ativo(a)&&a.veiculoId===id).sort((a,b)=>new Date(b.dataHora)-new Date(a.dataHora));
+  v.innerHTML=`<div class="between" style="margin-bottom:6px"><a class="btn ghost sm" href="#/veiculos">← Veículos</a>
+    <div class="actionbar">${can("editar")?`<button class="btn sm" id="edit">Editar</button><button class="btn sm" id="addpv">+ Preventiva</button>`:""}${can("excluir")?`<button class="btn sm danger" id="del">Excluir</button>`:""}</div></div>
+  <div class="pagehead"><h1 class="mono">${esc(x.placa)}</h1><p>${esc(x.marcaModelo)} · ${x.ano} · ${esc(x.cor)} · ${esc(x.tipo)} · <span class="tnum">${km(x.kmAtual)}</span></p></div>
+  <div class="detailgrid two">
+    <div class="stack">
+      <div class="panel"><div class="ph"><h3>Manutenção preventiva</h3></div>
+      <div class="tblwrap"><table class="tbl"><thead><tr><th>Serviço</th><th>Regra</th><th>Última</th><th>Restante</th><th>Status</th><th></th></tr></thead><tbody>
+      ${prevs.map(p=>{const s=preventivaStatus(p);return `<tr>
+        <td>${esc(p.tipo)}</td>
+        <td class="small">${p.regraKm?km(p.regraKm):""}${p.regraKm&&p.regraMeses?" ou ":""}${p.regraMeses?p.regraMeses+" meses":""}</td>
+        <td class="small">${p.ultData?fmtDate(p.ultData):"—"}<br>${p.ultKm?km(p.ultKm):""}</td>
+        <td class="small tnum">${isFinite(s.kmRest)?km(s.kmRest):""}${isFinite(s.kmRest)&&isFinite(s.diasRest)?"<br>":""}${isFinite(s.diasRest)?s.diasRest+" d":""}</td>
+        <td><span class="pill ${s.cls}">${s.label}</span></td>
+        <td>${can("editar")?`<button class="btn sm" data-done="${p.id}">Registrar</button>`:""}</td></tr>`;}).join("")||'<tr><td colspan="6" class="muted">Sem preventivas.</td></tr>'}
+      </tbody></table></div></div>
+      <div class="panel"><div class="ph"><h3>Abastecimentos</h3><a class="btn ghost sm" href="#/abastecimento">Registrar</a></div>
+      <div class="tblwrap"><table class="tbl"><thead><tr><th>Data</th><th>Posto</th><th>Litros</th><th>Total</th><th>R$/L</th></tr></thead><tbody>
+      ${abast.map(a=>`<tr><td>${fmtDate(a.dataHora)}</td><td>${esc(a.posto)}</td><td class="tnum">${a.litros}</td><td class="tnum">${money(a.valorTotal)}</td><td class="tnum">${money(a.precoLitro)}</td></tr>`).join("")||'<tr><td colspan="5" class="muted">Nenhum.</td></tr>'}
+      </tbody></table></div></div>
+    </div>
+    <div class="card pad"><h3 style="margin-bottom:10px">Dados</h3>
+      <dl class="kv">
+        <dt>Combustível</dt><dd>${esc(x.combustivel)}</dd>
+        <dt>Data de aquisição</dt><dd>${fmtDate(x.dataAquis)}</dd>
+        <dt>Situação</dt><dd>${esc(x.situacao)}</dd>
+        <dt>Motorista principal</dt><dd>${esc(x.motorista||"—")}</dd>
+      </dl>
+      ${x.obs?`<p class="small muted" style="margin-top:10px">${esc(x.obs)}</p>`:""}
+    </div>
+  </div>`;
+  can("editar")&&(v.querySelector("#edit").onclick=()=>veicForm(v,x));
+  can("editar")&&(v.querySelector("#addpv").onclick=()=>preventivaModal(x));
+  can("excluir")&&(v.querySelector("#del").onclick=()=>excluir("veiculos",id,"Veículo",()=>location.hash="#/veiculos"));
+  v.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>{
+    const p=byId("preventivas",b.dataset.done);p.ultData=nowISO();p.ultKm=x.kmAtual;audit("Registro","Preventiva",p.id,p.tipo);persist();toast("Preventiva registrada.");router();
+  });
+}
+function preventivaModal(x){
+  modal({title:"Nova preventiva · "+x.placa,body:`<div class="formgrid">
+    <label class="f full">Serviço<input id="tp" placeholder="Troca de óleo, Filtros, Pneus…"></label>
+    <label class="f">Regra por KM<input id="rk" type="number" placeholder="ex: 10000"></label>
+    <label class="f">Regra por meses<input id="rm" type="number" placeholder="ex: 6"></label>
+    <label class="f">Último KM<input id="uk" type="number" value="${x.kmAtual}"></label>
+    <label class="f">Última data<input id="ud" type="date" value="${new Date().toISOString().slice(0,10)}"></label>
+  </div><p class="small muted" style="margin-top:8px">Vale o primeiro limite atingido (KM ou tempo).</p>`,
+    footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="ok">Adicionar</button>`});
+  $("#ok").onclick=()=>{
+    if(!$("#tp").value.trim())return toast("Informe o serviço.");
+    DB.preventivas.push({id:uid("pv"),veiculoId:x.id,tipo:$("#tp").value.trim(),regraKm:+$("#rk").value||0,regraMeses:+$("#rm").value||0,ultKm:+$("#uk").value||x.kmAtual,ultData:$("#ud").value||nowISO()});
+    audit("Criação","Preventiva",x.id);persist();closeModal();router();
+  };
+}
+function veicForm(v,x){
+  const e=x||{};
+  v.innerHTML=`<a class="btn ghost sm" href="#/veiculos">← Cancelar</a><div class="pagehead"><h1>${x?"Editar veículo":"Novo veículo"}</h1></div>
+  <div class="card pad"><div class="formgrid">
+    <label class="f">Placa <span class="rq">*</span><input id="placa" class="mono" value="${esc(e.placa||"")}"></label>
+    <label class="f">Marca / modelo<input id="marcaModelo" value="${esc(e.marcaModelo||"")}"></label>
+    <label class="f">Ano<input id="ano" type="number" value="${esc(e.ano||"")}"></label>
+    <label class="f">Cor<input id="cor" value="${esc(e.cor||"")}"></label>
+    <label class="f">Tipo<input id="tipo" value="${esc(e.tipo||"")}"></label>
+    <label class="f">Combustível<input id="combustivel" value="${esc(e.combustivel||"")}"></label>
+    <label class="f">KM atual<input id="kmAtual" type="number" value="${esc(e.kmAtual||0)}"></label>
+    <label class="f">Data de aquisição<input id="dataAquis" type="date" value="${esc((e.dataAquis||"").slice(0,10))}"></label>
+    <label class="f">Situação<select id="situacao">${["Ativo","Em manutenção","Inativo","Vendido"].map(s=>`<option${e.situacao===s?" selected":""}>${s}</option>`).join("")}</select></label>
+    <label class="f">Motorista principal<input id="motorista" value="${esc(e.motorista||"")}"></label>
+    <label class="f full">Observações<textarea id="obs">${esc(e.obs||"")}</textarea></label>
+  </div><div class="mf" style="border:0;padding:14px 0 0"><button class="btn" onclick="location.hash='#/veiculos'">Cancelar</button><button class="btn primary" id="save">Salvar</button></div></div>`;
+  v.querySelector("#save").onclick=()=>{
+    const g=id=>v.querySelector("#"+id).value.trim();
+    if(!g("placa"))return toast("Placa é obrigatória.");
+    const data={placa:g("placa"),marcaModelo:g("marcaModelo"),ano:+g("ano")||"",cor:g("cor"),tipo:g("tipo"),combustivel:g("combustivel"),kmAtual:+g("kmAtual")||0,dataAquis:g("dataAquis"),situacao:v.querySelector("#situacao").value,motorista:g("motorista"),obs:g("obs")};
+    if(x){Object.assign(x,data);audit("Edição","Veículo",x.id);}
+    else{const n={id:uid("vei"),criadoEm:nowISO(),...data};DB.veiculos.unshift(n);audit("Criação","Veículo",n.id);x=n;}
+    persist();location.hash="#/veiculos/"+x.id;toast("Veículo salvo.");
+  };
+}
+
+/* ============ ESTOQUE ============ */
+ROUTES.estoque=(v)=>{
+  let q="";
+  const draw=()=>{
+    const list=DB.produtos.filter(ativo).filter(p=>!q||[p.codigo,p.descricao,p.referencia,p.barras].join(" ").toLowerCase().includes(q.toLowerCase()));
+    v.querySelector("#prodBody").innerHTML=list.map(p=>`<tr>
+      <td><div style="font-weight:600">${esc(p.descricao)}</div><div class="small muted mono">${esc(p.codigo)} · ${esc(p.referencia)} · ${esc(p.barras)}</div></td>
+      <td class="tnum">${p.estoque}</td><td class="tnum">${p.minimo}</td><td class="tnum">${money(p.custo)}</td>
+      <td><span class="pill ${p.estoque<=0?"crit":p.estoque<=p.minimo?"warn":"good"}">${p.estoque<=0?"Zerado":p.estoque<=p.minimo?"Baixo":"OK"}</span></td>
+      <td class="small">${esc(p.fonte)}</td></tr>`).join("")||'<tr><td colspan="6" class="muted">Nada encontrado.</td></tr>';
+  };
+  v.innerHTML=`<div class="pagehead"><h1>Peças &amp; estoque</h1><p>O Bling é a fonte de produtos e estoque comercial. O app registra o uso técnico da peça e o vínculo com OS/equipamento, e trata solicitações.</p></div>
+  <div class="row" style="margin-bottom:12px"><div class="searchbar"><span class="ic">⌕</span><input id="q" placeholder="Código, descrição, referência ou código de barras"></div></div>
+  <div class="detailgrid two">
+    <div class="panel"><div class="ph"><h3>Produtos (Bling)</h3></div>
+      <div class="tblwrap"><table class="tbl"><thead><tr><th>Produto</th><th>Estoque</th><th>Mín.</th><th>Custo</th><th>Situação</th><th>Fonte</th></tr></thead><tbody id="prodBody"></tbody></table></div>
+    </div>
+    <div class="panel"><div class="ph"><h3>Solicitações de peça</h3></div>
+      <div class="list">${DB.solicitacoesPeca.filter(ativo).map(s=>`
+        <div class="item"><div><div class="t">${esc(s.produtoNome)} ×${s.qtd}</div>
+        <div class="d">OS ${esc(s.osRef||"—")} · ${esc(s.equipamentoId?eqNome(s.equipamentoId):"—")}</div>
+        <div class="small muted">${esc(s.motivo)}</div></div><span class="sp"></span>
+        <span class="pill ${s.status==="pendente"?"warn":"good"}">${esc(s.status)}</span>
+        ${s.status==="pendente"&&can("editar")?`<button class="btn sm" data-atende="${s.id}">Atender</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhuma solicitação.</div>'}
+      </div>
+    </div>
+  </div>`;
+  v.querySelector("#q").oninput=e=>{q=e.target.value;draw();};
+  v.querySelectorAll("[data-atende]").forEach(b=>b.onclick=()=>{
+    const s=byId("solicitacoesPeca",b.dataset.atende);s.status="atendida";
+    const o=DB.ordens.find(x=>ativo(x)&&x.numeroBling===s.osRef);if(o&&o.status==="aguardando_peca")o.status="aguardando_retorno";
+    audit("Atendimento","Solicitação de peça",s.id,s.produtoNome);persist();toast("Solicitação atendida — OS liberada para retorno.");router();
+  });
+  draw();
+};
+
+/* ============ ABASTECIMENTO ============ */
+ROUTES.abastecimento=(v)=>{
+  v.innerHTML=`<div class="pagehead"><h1>Abastecimento</h1><p>Fluxo: abastecer → escanear o QR Code do documento fiscal → conferir dados → confirmar → vincular ao veículo/jornada. Sempre editável; se o QR não ler, preenchimento manual.</p></div>
+  <div class="detailgrid two">
+    <div class="card pad">
+      <h3 style="margin-bottom:10px">Novo registro</h3>
+      <div class="row" style="margin-bottom:12px">
+        <button class="btn" id="scan">⛶ Simular leitura de QR Code</button>
+      </div>
+      <div class="formgrid">
+        <label class="f">Posto<input id="posto"></label>
+        <label class="f">Data / hora<input id="dataHora" type="datetime-local" value="${new Date().toISOString().slice(0,16)}"></label>
+        <label class="f">Combustível<select id="combustivel"><option>Gasolina</option><option>Etanol</option><option>Diesel</option><option>GNV</option></select></label>
+        <label class="f">Litros<input id="litros" type="number" step="any"></label>
+        <label class="f">Valor total<input id="valorTotal" type="number" step="any"></label>
+        <label class="f">Preço por litro<input id="precoLitro" type="number" step="any"></label>
+        <label class="f full">Documento fiscal<input id="docFiscal" placeholder="Chave / número da NFC-e"></label>
+        <label class="f">Veículo<select id="veiculoId">${DB.veiculos.filter(ativo).map(x=>`<option value="${x.id}">${esc(x.placa)} · ${esc(x.marcaModelo)}</option>`).join("")}</select></label>
+        <label class="f">Jornada<select id="jornadaId"><option value="">— nenhuma —</option>${DB.jornadas.filter(ativo).slice(0,8).map(j=>`<option value="${j.id}">${fmtDate(j.criadaEm)} · ${esc(byId("veiculos",j.veiculoId)?.placa)}</option>`).join("")}</select></label>
+      </div>
+      <button class="btn primary" id="save" style="margin-top:14px">Confirmar e vincular</button>
+    </div>
+    <div class="panel"><div class="ph"><h3>Últimos abastecimentos</h3></div>
+      <div class="tblwrap"><table class="tbl"><thead><tr><th>Data</th><th>Veículo</th><th>L</th><th>Total</th></tr></thead><tbody>
+      ${DB.abastecimentos.filter(ativo).sort((a,b)=>new Date(b.dataHora)-new Date(a.dataHora)).map(a=>`<tr><td>${fmtDate(a.dataHora)}</td><td class="mono">${esc(byId("veiculos",a.veiculoId)?.placa||"—")}</td><td class="tnum">${a.litros}</td><td class="tnum">${money(a.valorTotal)}</td></tr>`).join("")||'<tr><td colspan="4" class="muted">Nenhum.</td></tr>'}
+      </tbody></table></div>
+    </div>
+  </div>`;
+  const jA=jornadaAberta();if(jA)v.querySelector("#jornadaId").value=jA.id;
+  v.querySelector("#scan").onclick=()=>{
+    const postos=["Posto Trevo","Auto Posto Central","Posto Ipiranga BR277","Shell Rodovia"];
+    const litros=+(20+Math.random()*35).toFixed(2);const preco=+(5.6+Math.random()*1).toFixed(2);
+    v.querySelector("#posto").value=postos[Math.floor(Math.random()*postos.length)];
+    v.querySelector("#litros").value=litros;v.querySelector("#precoLitro").value=preco;
+    v.querySelector("#valorTotal").value=+(litros*preco).toFixed(2);
+    v.querySelector("#docFiscal").value="NFC-e "+Math.random().toString().slice(2,13)+"…";
+    toast("Dados extraídos do QR Code — confira antes de confirmar.");
+  };
+  v.querySelector("#litros").oninput=recalc;v.querySelector("#valorTotal").oninput=recalc;
+  function recalc(){const l=+v.querySelector("#litros").value,t=+v.querySelector("#valorTotal").value;if(l&&t)v.querySelector("#precoLitro").value=(t/l).toFixed(3);}
+  v.querySelector("#save").onclick=()=>{
+    const g=id=>v.querySelector("#"+id).value;
+    if(!g("litros")||!g("valorTotal"))return toast("Informe litros e valor total.");
+    const n={id:uid("ab"),criadoEm:nowISO(),posto:g("posto"),dataHora:g("dataHora"),combustivel:g("combustivel"),litros:+g("litros"),valorTotal:+g("valorTotal"),precoLitro:+g("precoLitro")||(+g("valorTotal")/+g("litros")),docFiscal:g("docFiscal"),veiculoId:g("veiculoId"),jornadaId:g("jornadaId")||null};
+    DB.abastecimentos.unshift(n);audit("Criação","Abastecimento",n.id);persist();toast("Abastecimento registrado.");router();
+  };
+};
+
+/* ============ INDICADORES ============ */
+ROUTES.indicadores=(v)=>{
+  const i=ind();
+  const porTipo={};DB.manutencoes.filter(ativo).forEach(m=>porTipo[m.tipoAtendimento]=(porTipo[m.tipoAtendimento]||0)+1);
+  const maxTipo=Math.max(1,...Object.values(porTipo));
+  const porMes={};DB.manutencoes.filter(ativo).forEach(m=>{const k=new Date(m.criadaEm).toLocaleDateString("pt-BR",{month:"short",year:"2-digit"});porMes[k]=(porMes[k]||0)+1;});
+  const kmTotal=DB.jornadas.filter(j=>ativo(j)&&j.kmFinal).reduce((s,j)=>s+(j.kmFinal-j.kmInicial),0);
+  const custoPecas=DB.manutencoes.filter(ativo).flatMap(m=>m.pecas||[]).reduce((s,p)=>s+(byId("produtos",p.produtoId)?.custo||0)*p.qtd,0);
+  const custoComb=DB.abastecimentos.filter(ativo).reduce((s,a)=>s+a.valorTotal,0);
+  v.innerHTML=`<div class="pagehead"><h1>Indicadores</h1><p>Painel gerencial. Estrutura preparada para cruzar veículo → KM → abastecimento → visitas → clientes → OS → equipamentos → peças → tempo.</p></div>
+  <div class="kpis" style="margin-bottom:20px">
+    <div class="kpi"><div class="lab">Manutenções (mês)</div><div class="val tnum">${i.mntMes.length}</div></div>
+    <div class="kpi"><div class="lab">KM rodado (total)</div><div class="val tnum" style="font-size:20px">${km(kmTotal)}</div></div>
+    <div class="kpi"><div class="lab">Custo de peças</div><div class="val" style="font-size:18px">${money(custoPecas)}</div></div>
+    <div class="kpi"><div class="lab">Custo combustível</div><div class="val" style="font-size:18px">${money(custoComb)}</div></div>
+    <div class="kpi ${i.estCrit.length?"crit":"good"}"><div class="lab">Estoque crítico</div><div class="val tnum">${i.estCrit.length}</div></div>
+    <div class="kpi ${i.prevVenc.length?"crit":"good"}"><div class="lab">Preventivas vencidas</div><div class="val tnum">${i.prevVenc.length}</div></div>
+  </div>
+  <div class="detailgrid two">
+    <div class="card pad"><h3 style="margin-bottom:14px">Manutenções por natureza do atendimento</h3>
+      ${Object.entries(porTipo).map(([k,n])=>`<div style="margin-bottom:10px"><div class="between small"><span>${esc(TIPOS_ATEND[k]||k)}</span><span class="tnum">${n}</span></div>
+      <div style="height:8px;background:var(--surface-3);border-radius:4px;overflow:hidden;margin-top:3px"><div style="height:100%;width:${n/maxTipo*100}%;background:var(--accent)"></div></div></div>`).join("")||'<p class="muted small">Sem dados.</p>'}
+      <p class="small muted" style="margin-top:10px">Locação, assistência técnica, garantia e cortesia contabilizados separadamente.</p>
+    </div>
+    <div class="stack">
+      <div class="card pad"><h3 style="margin-bottom:12px">Manutenções por mês</h3>
+        <div style="display:flex;gap:10px;align-items:flex-end;height:120px">
+          ${Object.entries(porMes).map(([k,n])=>{const mx=Math.max(...Object.values(porMes));return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;justify-content:flex-end">
+          <span class="small tnum">${n}</span><div style="width:100%;background:var(--accent-deep);border-radius:4px 4px 0 0;height:${n/mx*90}px"></div><span class="small muted">${esc(k)}</span></div>`;}).join("")}
+        </div>
+      </div>
+      <div class="card pad"><h3 style="margin-bottom:10px">OS por status</h3>
+        <dl class="kv">
+          <dt>Abertas</dt><dd class="tnum">${i.osAbertas.length}</dd>
+          <dt>Aguardando peça</dt><dd class="tnum">${i.osPeca.length}</dd>
+          <dt>Aguardando retorno</dt><dd class="tnum">${i.osRetorno.length}</dd>
+          <dt>Encerradas</dt><dd class="tnum">${DB.ordens.filter(o=>ativo(o)&&o.status==="encerrada").length}</dd>
+        </dl>
+      </div>
+      <div class="card pad"><h3 style="margin-bottom:10px">Produtividade por técnico</h3>
+        <dl class="kv">${DB.tecnicos.map(t=>`<dt>${esc(t.nome)}</dt><dd class="tnum">${DB.manutencoes.filter(m=>ativo(m)&&m.tecnicoId===t.id).length} mnt.</dd>`).join("")}</dl>
+      </div>
+    </div>
+  </div>`;
+};
+
+/* ============ RELATÓRIOS ============ */
+const REL_DEFS={
+  manutencoes:{nome:"Manutenções por período",filtros:["periodo","cliente","tecnico","tipo","status"]},
+  os:{nome:"Ordens de Serviço",filtros:["periodo","cliente","statusOS"]},
+  pecas:{nome:"Peças utilizadas e custo",filtros:["periodo","cliente"]},
+  jornadas:{nome:"Jornadas, KM e tempo",filtros:["periodo","tecnico","veiculo"]},
+  abastecimentos:{nome:"Abastecimentos",filtros:["periodo","veiculo"]},
+  preventivas:{nome:"Preventivas de veículos",filtros:["veiculo"]},
+  prontuario:{nome:"Prontuário do equipamento (laudo)",filtros:["equipamento","periodo"]},
+  cliente:{nome:"Histórico do cliente",filtros:["cliente","periodo"]}
+};
+ROUTES.relatorios=(v)=>{
+  const hoje=new Date();
+  const st={
+    tipo:"manutencoes",
+    de:new Date(hoje.getFullYear(),0,1).toISOString().slice(0,10),
+    ate:hoje.toISOString().slice(0,10),
+    cliente:"",tecnico:"",tipoAtend:"",fin:"",statusOS:"",veiculo:"",equip:""
+  };
+  let ultimo=null;
+
+  const per=d=>{if(!d)return false;const x=String(d).slice(0,10);return x>=st.de&&x<=st.ate;};
+  const usaPeriodo=()=>REL_DEFS[st.tipo].filtros.includes("periodo");
+  const custoMnt=m=>(m.pecas||[]).reduce((s,p)=>s+(byId("produtos",p.produtoId)?.custo||0)*p.qtd,0);
+  const dur=j=>{const e=j.eventos||[];const a=e[0]?.ts,b=(e.find(x=>x.tipo==="encerramento")||e[e.length-1])?.ts;if(!a||!b)return"—";const min=Math.round((new Date(b)-new Date(a))/60000);return(min/60|0)+"h"+String(min%60).padStart(2,"0");};
+
+  const BUILDERS={
+    manutencoes(){
+      let r=DB.manutencoes.filter(ativo).filter(m=>per(m.criadaEm));
+      if(st.cliente)r=r.filter(m=>m.clienteId===st.cliente);
+      if(st.tecnico)r=r.filter(m=>m.tecnicoId===st.tecnico);
+      if(st.tipoAtend)r=r.filter(m=>m.tipoAtendimento===st.tipoAtend);
+      if(st.fin)r=r.filter(m=>m.finalizacao===st.fin);
+      r.sort((a,b)=>new Date(a.criadaEm)-new Date(b.criadaEm));
+      const pt={};r.forEach(m=>pt[m.tipoAtendimento]=(pt[m.tipoAtendimento]||0)+1);
+      return{titulo:"Relatório de manutenções",
+        colunas:["Data","OS","Cliente","NS","Tipo","Técnico","Finalização","Qtd peças","Custo peças"],
+        linhas:r.map(m=>[fmtDate(m.criadaEm),m.numeroBlingRef||"—",cliNome(m.clienteId),byId("equipamentos",m.equipamentoId)?.ns||"—",TIPOS_ATEND[m.tipoAtendimento]||"—",tecNome(m.tecnicoId),m.finalizacao||"Em aberto",(m.pecas||[]).reduce((s,p)=>s+p.qtd,0),money(custoMnt(m))]),
+        totais:[{l:"Manutenções",n:r.length},{l:"Encerradas",n:r.filter(m=>m.status==="encerrada").length},{l:"Locação / Assistência",n:(pt.locacao||0)+" / "+(pt.assistencia||0)},{l:"Custo de peças",n:money(r.reduce((s,m)=>s+custoMnt(m),0))}]};
+    },
+    os(){
+      let r=DB.ordens.filter(ativo).filter(o=>per(o.criadaEm));
+      if(st.cliente)r=r.filter(o=>o.clienteId===st.cliente);
+      if(st.statusOS)r=r.filter(o=>o.status===st.statusOS);
+      r.sort((a,b)=>new Date(a.criadaEm)-new Date(b.criadaEm));
+      const c=s=>r.filter(o=>o.status===s).length;
+      return{titulo:"Relatório de Ordens de Serviço",
+        colunas:["Número (Bling)","Aberta em","Cliente","Equipamento","Tipo","Situação cobrança","Status"],
+        linhas:r.map(o=>[o.numeroBling,fmtDate(o.criadaEm),cliNome(o.clienteId),o.equipamentoId?eqNome(o.equipamentoId):"—",TIPOS_ATEND[o.tipoAtendimento]||"—",o.situacaoCobranca||"—",({aberta:"Aberta",em_atendimento:"Em atendimento",aguardando_peca:"Aguardando peça",aguardando_retorno:"Aguardando retorno",encerrada:"Encerrada"})[o.status]]),
+        totais:[{l:"Total",n:r.length},{l:"Abertas",n:c("aberta")},{l:"Aguardando peça",n:c("aguardando_peca")},{l:"Encerradas",n:c("encerrada")}]};
+    },
+    pecas(){
+      let ms=DB.manutencoes.filter(ativo).filter(m=>per(m.criadaEm));
+      if(st.cliente)ms=ms.filter(m=>m.clienteId===st.cliente);
+      const uso={};
+      ms.forEach(m=>(m.pecas||[]).forEach(p=>{uso[p.produtoId]=uso[p.produtoId]||{qtd:0,ocor:0};uso[p.produtoId].qtd+=p.qtd;uso[p.produtoId].ocor++;}));
+      const ents=Object.entries(uso).sort((a,b)=>b[1].qtd-a[1].qtd);
+      let totQtd=0,totCusto=0;
+      const linhas=ents.map(([pid,u])=>{const pr=byId("produtos",pid);const ct=(pr?.custo||0)*u.qtd;totQtd+=u.qtd;totCusto+=ct;return[pr?.descricao||"—",pr?.codigo||"—",u.qtd,u.ocor,money(pr?.custo||0),money(ct)];});
+      return{titulo:"Relatório de peças utilizadas",
+        colunas:["Produto","Código","Qtd total","Nº manutenções","Custo unitário","Custo total"],
+        linhas,totais:[{l:"Itens distintos",n:ents.length},{l:"Peças (qtd)",n:totQtd},{l:"Custo total",n:money(totCusto)}]};
+    },
+    jornadas(){
+      let r=DB.jornadas.filter(ativo).filter(j=>per(j.criadaEm));
+      if(st.tecnico)r=r.filter(j=>j.tecnicoId===st.tecnico);
+      if(st.veiculo)r=r.filter(j=>j.veiculoId===st.veiculo);
+      r.sort((a,b)=>new Date(a.criadaEm)-new Date(b.criadaEm));
+      let totKm=0,totVis=0;
+      const linhas=r.map(j=>{const perc=j.kmFinal?j.kmFinal-j.kmInicial:0;const vis=(j.eventos||[]).filter(e=>e.tipo==="chegada").length;totKm+=perc;totVis+=vis;
+        return[fmtDate(j.criadaEm),tecNome(j.tecnicoId),byId("veiculos",j.veiculoId)?.placa||"—",j.kmInicial?.toLocaleString("pt-BR")||"—",j.kmFinal?j.kmFinal.toLocaleString("pt-BR"):"—",perc?km(perc):"—",vis,dur(j)];});
+      return{titulo:"Relatório de jornadas",
+        colunas:["Data","Técnico","Veículo","KM inicial","KM final","Percorrido","Visitas","Duração"],
+        linhas,totais:[{l:"Jornadas",n:r.length},{l:"KM percorrido",n:km(totKm)},{l:"Visitas",n:totVis},{l:"Encerradas",n:r.filter(j=>j.status==="encerrada").length}]};
+    },
+    abastecimentos(){
+      let r=DB.abastecimentos.filter(ativo).filter(a=>per(a.dataHora||a.criadoEm));
+      if(st.veiculo)r=r.filter(a=>a.veiculoId===st.veiculo);
+      r.sort((a,b)=>new Date(a.dataHora)-new Date(b.dataHora));
+      let totL=0,totV=0;
+      const linhas=r.map(a=>{totL+=a.litros;totV+=a.valorTotal;return[fmtDate(a.dataHora),byId("veiculos",a.veiculoId)?.placa||"—",a.posto||"—",a.combustivel||"—",a.litros,money(a.valorTotal),money(a.precoLitro),a.docFiscal||"—"];});
+      return{titulo:"Relatório de abastecimentos",
+        colunas:["Data","Veículo","Posto","Combustível","Litros","Valor total","R$/L","Documento fiscal"],
+        linhas,totais:[{l:"Registros",n:r.length},{l:"Litros",n:totL.toFixed(1)},{l:"Valor total",n:money(totV)},{l:"Preço médio",n:money(totL?totV/totL:0)}]};
+    },
+    preventivas(){
+      let r=DB.preventivas.filter(ativo);
+      if(st.veiculo)r=r.filter(p=>p.veiculoId===st.veiculo);
+      const linhas=r.map(p=>{const s=preventivaStatus(p);const regra=[p.regraKm?km(p.regraKm):"",p.regraMeses?p.regraMeses+" meses":""].filter(Boolean).join(" ou ");
+        return[byId("veiculos",p.veiculoId)?.placa||"—",p.tipo,regra,p.ultData?fmtDate(p.ultData):"—",[isFinite(s.kmRest)?km(s.kmRest):"",isFinite(s.diasRest)?s.diasRest+" d":""].filter(Boolean).join(" / "),s.label];});
+      return{titulo:"Relatório de preventivas de veículos",
+        colunas:["Veículo","Serviço","Regra","Última execução","Restante","Status"],
+        linhas,totais:[{l:"Itens",n:r.length},{l:"Vencidas",n:r.filter(p=>preventivaStatus(p).venc).length},{l:"Próximas",n:r.filter(p=>{const s=preventivaStatus(p);return!s.venc&&s.prox;}).length}]};
+    },
+    prontuario(){
+      const e=byId("equipamentos",st.equip);
+      if(!e)return{erro:"Selecione um equipamento para gerar o laudo."};
+      let h=DB.manutencoes.filter(ativo).filter(m=>m.equipamentoId===e.id&&per(m.criadaEm)).sort((a,b)=>new Date(a.criadaEm)-new Date(b.criadaEm));
+      const linhas=h.map(m=>{const testes=Object.entries(m.testes||{}).map(([k,val])=>(DB.camposTecnicos.find(c=>c.id===k)?.nome||k)+": "+val).join("; ");
+        return[fmtDate(m.criadaEm),m.numeroBlingRef||"—",cliNome(m.clienteId),m.servico||m.problema||"—",testes||"—",(m.pecas||[]).map(p=>(byId("produtos",p.produtoId)?.descricao||"?")+" x"+p.qtd).join("; ")||"—",m.finalizacao||"—"];});
+      return{titulo:"Prontuário / laudo técnico do equipamento",
+        subtitulo:`NS ${e.ns} · ${e.modelo} · ${e.fabricante} · cliente atual ${cliNome(e.clienteId)} · status ${e.status}`,
+        colunas:["Data","OS","Cliente","Serviço realizado","Testes","Peças","Finalização"],
+        linhas,assinar:true,
+        totais:[{l:"Manutenções",n:h.length},{l:"1ª no período",n:h[0]?fmtDate(h[0].criadaEm):"—"},{l:"Última",n:h.length?fmtDate(h[h.length-1].criadaEm):"—"},{l:"Peças trocadas",n:h.reduce((s,m)=>s+(m.pecas||[]).reduce((x,p)=>x+p.qtd,0),0)}]};
+    },
+    cliente(){
+      const c=byId("clientes",st.cliente);
+      if(!c)return{erro:"Selecione um cliente."};
+      let h=DB.manutencoes.filter(ativo).filter(m=>m.clienteId===c.id&&per(m.criadaEm)).sort((a,b)=>new Date(a.criadaEm)-new Date(b.criadaEm));
+      const eqs=DB.equipamentos.filter(e=>ativo(e)&&e.clienteId===c.id);
+      return{titulo:"Histórico do cliente",
+        subtitulo:`${c.razao} · ${c.doc} · ${RELACAO[c.relacao]||"—"} · ${eqs.length} equipamento(s)`,
+        colunas:["Data","NS","OS","Tipo","Serviço","Finalização"],
+        linhas:h.map(m=>[fmtDate(m.criadaEm),byId("equipamentos",m.equipamentoId)?.ns||"—",m.numeroBlingRef||"—",TIPOS_ATEND[m.tipoAtendimento]||"—",m.servico||m.problema||"—",m.finalizacao||"—"]),
+        assinar:false,
+        totais:[{l:"Manutenções",n:h.length},{l:"Equipamentos",n:eqs.length},{l:"OS no período",n:new Set(h.map(m=>m.numeroBlingRef)).size}]};
+    }
+  };
+
+  function filtrosTxt(){
+    const p=[];
+    if(usaPeriodo())p.push("Período "+fmtDate(st.de)+" a "+fmtDate(st.ate));
+    if(st.cliente)p.push("Cliente: "+cliNome(st.cliente));
+    if(st.tecnico)p.push("Técnico: "+tecNome(st.tecnico));
+    if(st.tipoAtend)p.push("Tipo: "+TIPOS_ATEND[st.tipoAtend]);
+    if(st.fin)p.push("Finalização: "+st.fin);
+    if(st.veiculo)p.push("Veículo: "+(byId("veiculos",st.veiculo)?.placa||""));
+    return p.join(" · ")||"Sem filtros adicionais";
+  }
+  function csvText(r){
+    return String.fromCharCode(0xFEFF)+[r.colunas,...r.linhas].map(row=>row.map(cell=>{
+      const s=String(cell).replace(/"/g,'""');return /[";\n\r]/.test(s)?`"${s}"`:s;
+    }).join(";")).join("\r\n");
+  }
+  function selField(id,lab,opts,val){
+    return `<label class="f">${lab}<select id="${id}">${opts.map(([k,t])=>`<option value="${esc(k)}"${String(val)===String(k)?" selected":""}>${esc(t)}</option>`).join("")}</select></label>`;
+  }
+  function filtroHTML(){
+    const f=REL_DEFS[st.tipo].filtros;const parts=[];
+    if(f.includes("periodo"))parts.push(`<label class="f">De<input type="date" id="fde" value="${st.de}"></label>`,`<label class="f">Até<input type="date" id="fate" value="${st.ate}"></label>`);
+    if(f.includes("cliente"))parts.push(selField("fcli","Cliente",[["","Todos"],...DB.clientes.filter(ativo).map(c=>[c.id,c.fantasia||c.razao])],st.cliente));
+    if(f.includes("tecnico"))parts.push(selField("ftec","Técnico",[["","Todos"],...DB.tecnicos.map(t=>[t.id,t.nome])],st.tecnico));
+    if(f.includes("tipo"))parts.push(selField("ftip","Tipo de atendimento",[["","Todos"],...Object.entries(TIPOS_ATEND)],st.tipoAtend));
+    if(f.includes("status"))parts.push(selField("ffin","Finalização",[["","Todas"],...FINALIZACOES.map(x=>[x,x])],st.fin));
+    if(f.includes("statusOS"))parts.push(selField("fsos","Status da OS",[["","Todos"],["aberta","Aberta"],["em_atendimento","Em atendimento"],["aguardando_peca","Aguardando peça"],["aguardando_retorno","Aguardando retorno"],["encerrada","Encerrada"]],st.statusOS));
+    if(f.includes("veiculo"))parts.push(selField("fvei","Veículo",[["","Todos"],...DB.veiculos.filter(ativo).map(x=>[x.id,x.placa+" · "+x.marcaModelo])],st.veiculo));
+    if(f.includes("equipamento"))parts.push(selField("feq","Equipamento / NS",[["","Selecione…"],...DB.equipamentos.filter(ativo).map(e=>[e.id,e.ns+" · "+e.modelo])],st.equip));
+    return parts.join("");
+  }
+  function readFilters(){
+    const g=id=>v.querySelector("#"+id);
+    if(g("fde"))st.de=g("fde").value;
+    if(g("fate"))st.ate=g("fate").value;
+    if(g("fcli"))st.cliente=g("fcli").value;
+    if(g("ftec"))st.tecnico=g("ftec").value;
+    if(g("ftip"))st.tipoAtend=g("ftip").value;
+    if(g("ffin"))st.fin=g("ffin").value;
+    if(g("fsos"))st.statusOS=g("fsos").value;
+    if(g("fvei"))st.veiculo=g("fvei").value;
+    if(g("feq"))st.equip=g("feq").value;
+  }
+  function docHTML(r){
+    return `<div class="repdoc">
+      <div class="rephead">
+        <div><div class="org">GeraCampo</div><div class="small muted">Assistência técnica &amp; manutenção de geradores de cloro</div></div>
+        <div class="meta">Emitido em ${fmtDT(nowISO())}<br>Perfil: ${esc(perfilNome())}${usaPeriodo()?"<br>Período: "+fmtDate(st.de)+" a "+fmtDate(st.ate):""}</div>
+      </div>
+      <div class="repttl">${esc(r.titulo)}</div>
+      <div class="repsub">${esc(r.subtitulo||filtrosTxt())}</div>
+      <div class="reptotals">${r.totais.map(t=>`<div class="reptot"><div class="l">${esc(t.l)}</div><div class="n">${esc(t.n)}</div></div>`).join("")}</div>
+      <div class="tblwrap"><table class="tbl"><thead><tr>${r.colunas.map(c=>`<th>${esc(c)}</th>`).join("")}</tr></thead>
+      <tbody>${r.linhas.length?r.linhas.map(ln=>`<tr>${ln.map(c=>`<td>${esc(c)}</td>`).join("")}</tr>`).join(""):`<tr><td colspan="${r.colunas.length}" class="muted">Nenhum registro para o filtro selecionado.</td></tr>`}</tbody></table></div>
+      ${r.assinar?`<div class="repsign"><div>Técnico responsável</div><div>Responsável pelo cliente</div></div>`:""}
+      <div class="repfoot"><span>${r.linhas.length} registro(s) · fonte: base local GeraCampo</span><span>Documento gerado automaticamente pelo GeraCampo</span></div>
+    </div>`;
+  }
+  function gerar(){
+    readFilters();
+    const r=BUILDERS[st.tipo]();
+    const out=v.querySelector("#repout");
+    if(r.erro){ultimo=null;out.innerHTML=`<div class="alertbox"><span>!</span><div>${esc(r.erro)}</div></div>`;return;}
+    ultimo=r;
+    out.innerHTML=docHTML(r);
+    audit("Relatório",REL_DEFS[st.tipo].nome,"",filtrosTxt());
+  }
+
+  v.innerHTML=`<div class="pagehead"><h1>Relatórios</h1><p>Documentos filtráveis para impressão, PDF ou exportação. Mesma base do restante do app — sem retrabalho de digitação.</p></div>
+  <div class="card pad noprint" style="margin-bottom:18px">
+    <div class="formgrid">
+      <label class="f">Relatório
+        <select id="rtipo">${Object.entries(REL_DEFS).map(([k,d])=>`<option value="${k}"${k===st.tipo?" selected":""}>${d.nome}</option>`).join("")}</select></label>
+      <div id="rfiltros" style="display:contents"></div>
+    </div>
+    <div class="actionbar" style="margin-top:14px">
+      <button class="btn primary" id="rgerar">Gerar relatório</button>
+      <button class="btn" id="rprint">⎙ Imprimir / PDF</button>
+      <button class="btn" id="rcsv">⇩ Exportar CSV</button>
+    </div>
+    <p class="small muted" style="margin:10px 0 0">Dica: em <b>Imprimir</b>, escolha “Salvar como PDF”. No app publicado, o CSV é copiado para a área de transferência (cole no Excel/Sheets).</p>
+  </div>
+  <div id="repout"></div>`;
+
+  const drawFiltros=()=>{v.querySelector("#rfiltros").innerHTML=filtroHTML();};
+  drawFiltros();
+  v.querySelector("#rtipo").onchange=e=>{readFilters();st.tipo=e.target.value;drawFiltros();v.querySelector("#repout").innerHTML="";ultimo=null;};
+  v.querySelector("#rgerar").onclick=gerar;
+  v.querySelector("#rprint").onclick=()=>{if(!ultimo)gerar();setTimeout(()=>window.print(),80);};
+  v.querySelector("#rcsv").onclick=async()=>{
+    if(!ultimo)gerar();
+    if(!ultimo)return;
+    const txt=csvText(ultimo);
+    const fname=st.tipo+"_"+st.ate+".csv";
+    // 1) capacidade de download do artefato publicado
+    try{
+      const downloads=window.claude&&claude.use?await claude.use("downloads"):null;
+      if(downloads){await downloads.save({filename:fname,data:txt});toast("CSV salvo.");return;}
+    }catch(e){if(e&&e.code==="declined")return;}
+    // 2) download direto (arquivo local / navegador)
+    let baixou=false;
+    try{
+      const blob=new Blob([txt],{type:"text/csv;charset=utf-8"});
+      const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=fname;
+      document.body.appendChild(a);a.click();setTimeout(()=>{a.remove();URL.revokeObjectURL(a.href);},0);baixou=true;
+    }catch(e){}
+    // 3) sempre disponibiliza para copiar
+    if(navigator.clipboard)navigator.clipboard.writeText(txt).catch(()=>{});
+    modal({title:"Exportar CSV",wide:true,body:`
+      <p class="small muted">Arquivo <b>${esc(fname)}</b>. ${baixou?"Se o download não aparecer, ":""}copie o conteúdo abaixo e cole no Excel ou Google Sheets.</p>
+      <textarea style="min-height:220px;font-family:var(--mono);font-size:12px" readonly id="csvta">${esc(txt)}</textarea>`,
+      footer:`<button class="btn" onclick="closeModal()">Fechar</button><button class="btn primary" id="csvcopy">Copiar tudo</button>`});
+    $("#csvta").select();
+    $("#csvcopy").onclick=()=>{$("#csvta").select();try{document.execCommand("copy");}catch(e){}navigator.clipboard&&navigator.clipboard.writeText(txt).catch(()=>{});toast("CSV copiado.");};
+  };
+  gerar();
+};
+
+/* ============ FLUXO MACRO ============ */
+ROUTES.fluxo=(v)=>{
+  const steps=[
+    "Cliente / produto / OS no Bling",
+    "OS Bling → Cliente → Equipamento/NS → Classificação do atendimento",
+    "Jornada → Veículo → KM → Deslocamento → Chegada",
+    "Atendimento → Diagnóstico → Serviço → Testes → Medições → Peças → Fotos",
+    "Finalização → Status → Retorno / Peça / Preventiva",
+    "Histórico do equipamento + Histórico do cliente + Indicadores gerenciais"
+  ];
+  v.innerHTML=`<div class="pagehead"><h1>Fluxo macro</h1><p>O caminho de ponta a ponta. Cada etapa alimenta a próxima; o histórico e os indicadores são consequência, não retrabalho.</p></div>
+  <div class="card pad" style="max-width:640px">
+    <div class="flowdiag">
+      ${steps.map((s,ix)=>`<div class="step">${esc(s)}</div>${ix<steps.length-1?'<div class="arr">↓</div>':""}`).join("")}
+    </div>
+  </div>
+  <div class="card pad" style="margin-top:16px">
+    <h3 style="margin-bottom:10px">Decisões que a estrutura garante</h3>
+    <ul class="small" style="line-height:1.9;margin:0;padding-left:18px">
+      <li>Não duplicar OS do Bling nem histórico de manutenção.</li>
+      <li>NS é único e permanente; equipamento muda de cliente sem perder histórico.</li>
+      <li>Equipamento substituído mantém o NS antigo intacto e relacionado ao novo.</li>
+      <li>Cliente pode ter, ao mesmo tempo, equipamentos locados e próprios.</li>
+      <li>Natureza do atendimento e situação da cobrança são campos distintos.</li>
+      <li>Exclusão só por administrador e com auditoria (soft delete).</li>
+      <li>Técnico não repete dados permanentes do equipamento a cada visita.</li>
+      <li>Campos técnicos extensíveis; chegada ao cliente pode ser automática.</li>
+      <li>Jornada com vários clientes por dia; dois técnicos podem dividir o veículo.</li>
+      <li>QR Code de abastecimento com fallback manual; arquitetura aberta a telemetria (Arduino/ESP32).</li>
+    </ul>
+  </div>`;
+};
+
+/* ============ CONFIGURAÇÕES ============ */
+ROUTES.config=(v)=>{
+  v.innerHTML=`<div class="pagehead"><h1>Configurações</h1><p>Campos técnicos e listas do sistema. Adicionar campo não altera a estrutura do app — o cadastro do equipamento e o registro de manutenção passam a exibi-lo.</p></div>
+  <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Campos técnicos do equipamento</h3>${can("editar")?`<button class="btn sm" id="addCT">+ Campo</button>`:""}</div>
+    <div class="tblwrap"><table class="tbl"><thead><tr><th>Nome</th><th>Tipo</th><th>Obrigatório</th><th></th></tr></thead><tbody>
+    ${DB.camposTecnicos.filter(ativo).map(c=>`<tr><td>${esc(c.nome)}</td><td>${esc(c.tipo)}</td><td>${c.obrig?'<span class="pill accent">sim</span>':"não"}</td>
+    <td>${can("editar")?`<button class="btn sm danger" data-rmct="${c.id}">Remover</button>`:""}</td></tr>`).join("")}
+    </tbody></table></div>
+  </div>
+  <div class="detailgrid two">
+    <div class="card pad"><h3 style="margin-bottom:8px">Técnicos</h3>
+      <dl class="kv">${DB.tecnicos.map(t=>`<dt>${esc(t.nome)}</dt><dd>${esc(PERFIS[t.perfil]?.nome||t.perfil)}</dd>`).join("")}</dl>
+      <label class="f" style="margin-top:12px">Técnico ativo (para jornada)
+        <select id="tecAtual">${DB.tecnicos.map(t=>`<option value="${t.id}"${t.id===VIEWER.tecnicoId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
+    </div>
+    <div class="card pad"><h3 style="margin-bottom:8px">Base de dados</h3>
+      <p class="small" id="syncinfo" style="margin:0 0 6px"></p>
+      <p class="small muted">Base de teste com registros fictícios (NS TESTE-001/002/003). Perfil e técnico ativo são escolhidos por dispositivo e não sincronizam.</p>
+      <div class="actionbar" style="margin-top:12px">
+        <button class="btn sm" id="export">Exportar JSON</button>
+        <button class="btn sm danger" id="reset">Restaurar base de teste</button>
+      </div>
+    </div>
+  </div>`;
+  const si=v.querySelector("#syncinfo");
+  si.innerHTML=LOCALONLY?"Arquivo local — dados só neste navegador."
+    :cloud?`<b style="color:var(--good)">Base compartilhada ativa.</b> Todos que abrirem o link veem e editam os mesmos dados${SYNC.ts?" · última sincronização "+fmtTime(SYNC.ts):""}. As fotos ficam no aparelho de quem as tira.`
+    :SYNC.mode==="conectando"?"Conectando à base compartilhada…"
+    :"Fora do claude.ai (ex.: GitHub Pages) os dados ficam só neste navegador. A base compartilhada só funciona na versão publicada como artifact.";
+  v.querySelector("#tecAtual").onchange=e=>{VIEWER.tecnicoId=e.target.value;saveViewer();toast("Técnico ativo (neste dispositivo) alterado.");};
+  v.querySelector("#addCT")&&(v.querySelector("#addCT").onclick=()=>{
+    modal({title:"Novo campo técnico",body:`<div class="stack">
+      <label class="f">Nome<input id="cn"></label>
+      <label class="f">Tipo<select id="ct"><option value="texto">Texto</option><option value="numero">Número</option></select></label>
+      <label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="co" style="width:auto"> Obrigatório</label>
+    </div>`,footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="ok">Adicionar</button>`});
+    $("#ok").onclick=()=>{if(!$("#cn").value.trim())return toast("Informe o nome.");DB.camposTecnicos.push({id:uid("ct"),nome:$("#cn").value.trim(),tipo:$("#ct").value,obrig:$("#co").checked});audit("Criação","Campo técnico","");persist();closeModal();router();};
+  });
+  v.querySelectorAll("[data-rmct]").forEach(b=>b.onclick=()=>{const c=byId("camposTecnicos",b.dataset.rmct);c.excluido={ts:nowISO(),usuario:perfilNome(),motivo:"removido em configurações"};audit("Exclusão","Campo técnico",c.id);persist();router();});
+  v.querySelector("#export").onclick=()=>{toast("JSON no console.");console.log(JSON.stringify(DB,null,2));};
+  v.querySelector("#reset").onclick=()=>{if(confirm(cloud?"Restaurar a base de teste? Isso substitui os dados de TODOS que usam o link.":"Restaurar a base de teste? Os dados atuais serão perdidos."))
+    {DB=seed();normalizeDB();audit("Restauração","Base de teste","");persist();toast("Base restaurada.");location.hash="#/painel";router();}};
+};
+
+/* ============ AUDITORIA ============ */
+ROUTES.auditoria=(v)=>{
+  const excl=[];["clientes","equipamentos","veiculos","produtos","solicitacoesPeca"].forEach(a=>DB[a].filter(x=>x.excluido).forEach(x=>excl.push({a,x})));
+  v.innerHTML=`<div class="pagehead"><h1>Auditoria</h1><p>Toda exclusão administrativa registra usuário, data/hora e motivo. Preferência por exclusão lógica em vez de apagar históricos.</p></div>
+  <div class="detailgrid two">
+    <div class="panel"><div class="ph"><h3>Trilha de auditoria</h3><span class="small muted">${DB.auditoria.length} evento(s)</span></div>
+      <div class="tblwrap" style="max-height:520px;overflow:auto"><table class="tbl"><thead><tr><th>Quando</th><th>Usuário</th><th>Ação</th><th>Entidade</th><th>Detalhe</th></tr></thead><tbody>
+      ${DB.auditoria.slice(0,200).map(a=>`<tr><td class="small mono">${fmtDT(a.ts)}</td><td class="small">${esc(a.usuario)}</td><td><span class="pill ${a.acao==="Exclusão"?"crit":a.acao==="Encerramento"?"good":""}">${esc(a.acao)}</span></td><td class="small">${esc(a.entidade)}</td><td class="small muted">${esc(a.detalhe||"")}</td></tr>`).join("")||'<tr><td colspan="5" class="muted">Sem eventos ainda.</td></tr>'}
+      </tbody></table></div>
+    </div>
+    <div class="panel"><div class="ph"><h3>Registros excluídos (soft delete)</h3></div>
+      <div class="list">${excl.map(({a,x})=>`<div class="item"><div><div class="t">${esc(x.razao||x.ns||x.placa||x.descricao||x.produtoNome||x.id)}</div>
+      <div class="d">${esc(a)} · ${esc(x.excluido.usuario)} · ${fmtDT(x.excluido.ts)}</div>
+      <div class="small muted">${esc(x.excluido.motivo)}</div></div>
+      <span class="sp"></span>${can("excluir")?`<button class="btn sm" data-restore="${a}:${x.id}">Restaurar</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhum registro excluído.</div>'}
+      </div>
+    </div>
+  </div>`;
+  v.querySelectorAll("[data-restore]").forEach(b=>b.onclick=()=>{
+    const [a,id]=b.dataset.restore.split(":");const x=byId(a,id);delete x.excluido;audit("Restauração",a,id);persist();toast("Registro restaurado.");router();
+  });
+};
+
+/* ---------- boot ---------- */
+renderNav();renderRole();
+$("#rolesel").onchange=e=>{VIEWER.perfil=e.target.value;saveViewer();toast("Perfil (neste dispositivo): "+PERFIS[e.target.value].nome);router();};
+$("#menutoggle").onclick=()=>$("#app").classList.toggle("navopen");
+const THEMEKEY="geracampo_theme";
+try{const t=localStorage.getItem(THEMEKEY);if(t)document.documentElement.dataset.theme=t;}catch(e){}
+$("#themebtn").onclick=()=>{
+  const cur=document.documentElement.dataset.theme;
+  const nxt=cur==="dark"?"light":cur==="light"?"dark":(matchMedia("(prefers-color-scheme: dark)").matches?"light":"dark");
+  document.documentElement.dataset.theme=nxt;try{localStorage.setItem(THEMEKEY,nxt);}catch(e){}
+};
+router();
+initCloud();
+</script>
