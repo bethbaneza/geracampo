@@ -65,8 +65,11 @@ button{font:inherit;cursor:pointer}
 .topbar{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:9px 12px;padding-top:calc(9px + env(safe-area-inset-top))}
 .topbar .crumb{flex:1;min-width:0;font-weight:700;font-family:var(--display);font-size:16px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .topbar .sp{flex:1}
-#rolesel{display:none}
-@media(min-width:960px){#rolesel{display:block;background:var(--surface-2);border:1px solid var(--line);color:var(--ink);border-radius:100px;padding:7px 26px 7px 11px;font:inherit;font-size:12px;max-width:12em;min-height:0}}
+.userchip{display:flex;align-items:center;gap:7px;background:var(--surface-2);border:1px solid var(--line);border-radius:100px;padding:5px 11px 5px 5px;color:var(--ink);min-height:38px;flex:none;max-width:11em}
+.userchip .uav{width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:11px;flex:none}
+.userchip .uname{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.userchip:active{background:var(--surface-3)}
+@media(max-width:360px){.userchip .uname{display:none}.userchip{padding:5px}}
 .iconbtn{background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2);border-radius:var(--radius-sm);width:38px;height:38px;display:grid;place-items:center;flex:none}
 #backbtn{display:none}
 .app.hasback #backbtn{display:grid}
@@ -288,7 +291,9 @@ input[type=checkbox]{min-height:0}
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
       </button>
       <span class="crumb" id="crumb">Painel</span>
-      <select id="rolesel" aria-label="Perfil ativo"></select>
+      <button class="userchip" id="userbtn" aria-label="Trocar técnico">
+        <span class="uav" id="uav">?</span><span class="uname" id="uname"></span>
+      </button>
       <button class="iconbtn" id="themebtn" aria-label="Alternar tema">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
       </button>
@@ -417,11 +422,14 @@ function seed(){
   const auditoria=[];
   return {schema:1,perfilAtual:"tecnico",tecnicoAtualId:"tec-1",camposTecnicos,tecnicos,clientes,equipamentos,veiculos,preventivas,produtos,ordens,manutencoes,solicitacoesPeca,jornadas,abastecimentos,auditoria};
 }
-/* perfil e técnico ficam por dispositivo (cada testador escolhe o seu, sem sincronizar) */
+/* quem está usando o app NESTE aparelho (vários técnicos podem revezar) */
 const VKEY="geracampo_viewer_v1";
 const VIEWER=(()=>{try{return JSON.parse(localStorage.getItem(VKEY))||{};}catch(e){return{};}})();
+const VIEWER_FRESH=!VIEWER.tecnicoId;
 function saveViewer(){try{localStorage.setItem(VKEY,JSON.stringify(VIEWER));}catch(e){}}
 const perfilNome=()=>PERFIS[VIEWER.perfil]?.nome||"—";
+const tecAtualNome=()=>byId("tecnicos",VIEWER.tecnicoId)?.nome||"—";
+const iniciais=n=>((String(n||"").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join(""))||"?").toUpperCase();
 
 const COLS=["clientes","equipamentos","veiculos","preventivas","produtos","ordens","manutencoes","solicitacoesPeca","jornadas","abastecimentos","auditoria","camposTecnicos","tecnicos"];
 function normalizeDB(){if(!DB||typeof DB!=="object")DB=seed();COLS.forEach(k=>{if(!Array.isArray(DB[k]))DB[k]=[];});DB.schema=1;}
@@ -430,8 +438,9 @@ let DB;
 try{DB=JSON.parse(localStorage.getItem(KEY));}catch(e){DB=null;}
 if(!DB||DB.schema!==1)DB=seed();
 normalizeDB();
-VIEWER.perfil=VIEWER.perfil||DB.perfilAtual||"tecnico";
 VIEWER.tecnicoId=VIEWER.tecnicoId||DB.tecnicoAtualId||(DB.tecnicos[0]&&DB.tecnicos[0].id);
+if(!DB.tecnicos.some(t=>t.id===VIEWER.tecnicoId&&!t.excluido)){const t=DB.tecnicos.find(t=>!t.excluido);VIEWER.tecnicoId=t&&t.id;}
+VIEWER.perfil=VIEWER.perfil||(DB.tecnicos.find(t=>t.id===VIEWER.tecnicoId)||{}).perfil||DB.perfilAtual||"tecnico";
 saveViewer();
 
 /* fotos ficam no dispositivo de quem tirou (não entram na base compartilhada) */
@@ -664,9 +673,32 @@ function renderNav(){
 function renderTabs(){
   $("#tabbar").innerHTML=TABS.map(t=>`<a href="#/${t.r}" data-tab="${t.r}">${svgIc(t.i)}${t.t}</a>`).join("");
 }
-function renderRole(){
-  $("#rolesel").innerHTML=Object.entries(PERFIS).map(([k,v])=>`<option value="${k}"${k===VIEWER.perfil?" selected":""}>${v.nome}</option>`).join("");
+function renderRole(){ // mantém o nome; agora atualiza o "chip" de técnico
+  const nome=tecAtualNome();
+  $("#uav").textContent=iniciais(nome);
+  $("#uname").textContent=(nome.split(/\s+/)[0]||"—");
+  $("#userbtn").title=nome+" · "+perfilNome();
   updateSync();
+}
+function trocarTecnico(){
+  const lista=DB.tecnicos.filter(ativo);
+  modal({title:"Quem está usando o app?",body:`
+    <p class="small muted" style="margin:0 0 12px">Toque no seu nome. A jornada, os atendimentos e o histórico ficam vinculados a você. Vários técnicos podem revezar neste mesmo aparelho — é só voltar aqui e trocar.</p>
+    <div class="list" style="border:1px solid var(--line);border-radius:var(--radius);overflow:hidden">
+    ${lista.map(t=>`<button class="item" data-pick="${t.id}" style="width:100%;background:${t.id===VIEWER.tecnicoId?'var(--accent-soft)':'none'};border:0;text-align:left">
+      <span class="avatar">${esc(iniciais(t.nome))}</span>
+      <div><div class="t">${esc(t.nome)}</div><div class="d">${esc(PERFIS[t.perfil]?.nome||t.perfil)}</div></div>
+      <span class="sp"></span>${t.id===VIEWER.tecnicoId?'<span class="pill accent">você</span>':'<span class="small muted">entrar</span>'}
+    </button>`).join("")}
+    </div>
+    <button class="btn" id="addTecPick" style="width:100%;margin-top:10px">+ Cadastrar técnico</button>`,
+    footer:`<button class="btn" onclick="closeModal()">Fechar</button>`});
+  document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{
+    const t=byId("tecnicos",b.dataset.pick);if(!t)return;
+    VIEWER.tecnicoId=t.id;VIEWER.perfil=t.perfil||"tecnico";saveViewer();
+    renderRole();closeModal();toast("Agora usando como "+t.nome);router();
+  });
+  $("#addTecPick").onclick=()=>{closeModal();tecnicoModal(null);};
 }
 
 /* ---------- modal ---------- */
@@ -727,16 +759,23 @@ ROUTES.mais=(v)=>{
     ${MAIS.map(m=>`<a class="maistile" href="#/${m.r}">${svgIc(m.i)}<b>${esc(m.t)}</b><span>${esc(m.d)}</span></a>`).join("")}
   </div>
   <div class="card pad" style="margin-bottom:14px">
-    <div class="between"><h3>Perfil neste aparelho</h3></div>
-    <div class="row" style="margin-top:10px">
-      <label class="f" style="flex:1">Perfil de acesso<select id="mperfil">${Object.entries(PERFIS).map(([k,x])=>`<option value="${k}"${k===VIEWER.perfil?" selected":""}>${x.nome}</option>`).join("")}</select></label>
-      <label class="f" style="flex:1">Técnico<select id="mtec">${DB.tecnicos.filter(ativo).map(t=>`<option value="${t.id}"${t.id===VIEWER.tecnicoId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
+    <h3 style="margin-bottom:10px">Quem está usando este aparelho</h3>
+    <div class="item" style="border:1px solid var(--line);border-radius:var(--radius);min-height:0;padding:12px">
+      <span class="avatar">${esc(iniciais(tecAtualNome()))}</span>
+      <div><div class="t">${esc(tecAtualNome())}</div><div class="d">${esc(perfilNome())}</div></div>
+      <span class="sp"></span>
+      <button class="btn sm" id="mtrocar">Trocar</button>
     </div>
-    <p class="small muted" style="margin:8px 0 0">Escolha local — não sincroniza com os outros aparelhos.</p>
+    <details style="margin-top:10px">
+      <summary class="small muted" style="cursor:pointer">Ajustar nível de acesso manualmente</summary>
+      <label class="f" style="margin-top:8px">Nível de acesso<select id="mperfil">${Object.entries(PERFIS).map(([k,x])=>`<option value="${k}"${k===VIEWER.perfil?" selected":""}>${x.nome}</option>`).join("")}</select></label>
+      <p class="small muted" style="margin:6px 0 0">Normalmente o nível vem do cadastro do técnico. Só mude aqui em casos especiais.</p>
+    </details>
+    <p class="small muted" style="margin:10px 0 0">Vários técnicos podem revezar neste aparelho — toque no seu nome no topo da tela a qualquer momento para trocar. A escolha é local, não sincroniza.</p>
   </div>
   ${!standalone?`<div class="alertbox info"><span>📲</span><div>Para usar como aplicativo: no navegador do celular toque em <b>Compartilhar / ⋮</b> → <b>Adicionar à tela inicial</b>.</div></div>`:""}`;
-  v.querySelector("#mperfil").onchange=e=>{VIEWER.perfil=e.target.value;saveViewer();toast("Perfil: "+PERFIS[e.target.value].nome);renderRole();router();};
-  v.querySelector("#mtec").onchange=e=>{VIEWER.tecnicoId=e.target.value;saveViewer();toast("Técnico ativo alterado.");};
+  v.querySelector("#mtrocar").onclick=()=>trocarTecnico();
+  v.querySelector("#mperfil").onchange=e=>{VIEWER.perfil=e.target.value;saveViewer();toast("Nível: "+PERFIS[e.target.value].nome);renderRole();router();};
 };
 
 /* ============ PAINEL ============ */
@@ -2197,7 +2236,7 @@ function installPWA(){
 /* ---------- boot ---------- */
 installPWA();
 renderNav();renderTabs();renderRole();
-$("#rolesel").onchange=e=>{VIEWER.perfil=e.target.value;saveViewer();toast("Perfil (neste aparelho): "+PERFIS[e.target.value].nome);router();};
+$("#userbtn").onclick=()=>trocarTecnico();
 $("#backbtn").onclick=()=>{if(history.length>1)history.back();else location.hash="#/mais";};
 const THEMEKEY="geracampo_theme";
 try{const t=localStorage.getItem(THEMEKEY);if(t)document.documentElement.dataset.theme=t;}catch(e){}
@@ -2214,4 +2253,5 @@ $("#themebtn").onclick=()=>{
 };
 router();
 initRemote();
+if(VIEWER_FRESH&&DB.tecnicos.filter(ativo).length>1)setTimeout(trocarTecnico,300);
 </script>
