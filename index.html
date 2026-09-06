@@ -683,11 +683,12 @@ function closeModal(){$("#modalbg")?.remove();}
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
 
 /* ---------- exclusão (admin, com auditoria) ---------- */
-function excluir(arr,id,label,after){
-  if(!can("excluir")){toast("Somente administrador pode excluir.");return;}
+function excluir(arr,id,label,after,nivel){
+  nivel=nivel||"excluir";
+  if(!can(nivel)){toast("Sem permissão para excluir "+label.toLowerCase()+".");return;}
   const wrapId=uid("mot");
   modal({title:"Excluir "+label,body:`
-    <p class="small muted">A exclusão é lógica (soft delete). O registro sai das listas mas permanece auditável.</p>
+    <p class="small muted">A exclusão é lógica (soft delete). O registro sai das listas mas continua na auditoria e pode ser restaurado.</p>
     <label class="f">Motivo da exclusão <span class="rq">*</span>
       <textarea id="${wrapId}" placeholder="Descreva o motivo"></textarea></label>`,
     footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn danger" id="cfx">Excluir</button>`});
@@ -729,7 +730,7 @@ ROUTES.mais=(v)=>{
     <div class="between"><h3>Perfil neste aparelho</h3></div>
     <div class="row" style="margin-top:10px">
       <label class="f" style="flex:1">Perfil de acesso<select id="mperfil">${Object.entries(PERFIS).map(([k,x])=>`<option value="${k}"${k===VIEWER.perfil?" selected":""}>${x.nome}</option>`).join("")}</select></label>
-      <label class="f" style="flex:1">Técnico<select id="mtec">${DB.tecnicos.map(t=>`<option value="${t.id}"${t.id===VIEWER.tecnicoId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
+      <label class="f" style="flex:1">Técnico<select id="mtec">${DB.tecnicos.filter(ativo).map(t=>`<option value="${t.id}"${t.id===VIEWER.tecnicoId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
     </div>
     <p class="small muted" style="margin:8px 0 0">Escolha local — não sincroniza com os outros aparelhos.</p>
   </div>
@@ -1191,6 +1192,52 @@ ROUTES.manutencoes=(v,rest)=>{
   v.querySelector("#q").oninput=e=>{q=e.target.value;draw();};
   draw();
 };
+function relatorioManutencaoTexto(m){
+  const eq=byId("equipamentos",m.equipamentoId);
+  const L=[];
+  L.push("RELATÓRIO DE MANUTENÇÃO");
+  L.push("");
+  L.push("Cliente: "+cliNome(m.clienteId));
+  L.push("Equipamento: NS "+(eq?.ns||"—")+(eq?.modelo?" — "+eq.modelo:""));
+  if(m.numeroBlingRef)L.push("OS: "+m.numeroBlingRef);
+  L.push("Data: "+fmtDate(m.criadaEm));
+  L.push("Técnico: "+tecNome(m.tecnicoId));
+  L.push("Tipo de atendimento: "+(TIPOS_ATEND[m.tipoAtendimento]||"—"));
+  L.push("");
+  L.push("Problema relatado: "+(m.problema||"—"));
+  L.push("Diagnóstico: "+(m.diagnostico||"—"));
+  L.push("Serviço realizado: "+(m.servico||"—"));
+  const testes=Object.entries(m.testes||{}).filter(([,x])=>x).map(([k,x])=>"  - "+((DB.camposTecnicos.find(c=>c.id===k)||{}).nome||k)+": "+x)
+    .concat((m.testesExtra||[]).filter(t=>t.valor).map(t=>"  - "+t.nome+": "+t.valor));
+  if(testes.length){L.push("","Testes:");L.push(...testes);}
+  const med=Object.entries(m.medicoes||{}).filter(([,x])=>x).map(([k,x])=>"  - "+k+": "+x);
+  if(med.length){L.push("","Medições:");L.push(...med);}
+  const pc=(m.pecas||[]).map(p=>"  - "+((byId("produtos",p.produtoId)||{}).descricao||"Peça")+" (x"+p.qtd+")");
+  if(pc.length){L.push("","Peças/materiais utilizados:");L.push(...pc);}
+  if(m.obs)L.push("","Observações: "+m.obs);
+  L.push("");
+  L.push("Finalização: "+(m.finalizacao||"—"));
+  if(m.proximaAcao&&m.proximaAcao!=="nenhuma")L.push("Próxima ação: "+(PROX_ACOES[m.proximaAcao]||m.proximaAcao)+(m.proximaData?" — "+fmtDate(m.proximaData):""));
+  L.push("","—","Relatório gerado pelo GeraCampo.");
+  return L.join("\n");
+}
+function emailManutencao(m){
+  const cli=byId("clientes",m.clienteId),eq=byId("equipamentos",m.equipamentoId);
+  const assunto="Relatório de manutenção"+(eq?.ns?" — NS "+eq.ns:"")+(m.numeroBlingRef?" — OS "+m.numeroBlingRef:"");
+  const corpo=relatorioManutencaoTexto(m);
+  modal({title:"Enviar relatório por e-mail",wide:true,body:`
+    <label class="f">Para (e-mail do cliente)<input id="mailto" type="email" value="${esc(cli?.email||"")}" placeholder="cliente@exemplo.com"></label>
+    <p class="small muted" style="margin:12px 0 4px">Prévia — abre o app de e-mail do celular com tudo preenchido; é só revisar e enviar.</p>
+    <textarea readonly style="min-height:220px;font-size:12px" id="mailprev">${esc(assunto)}\n\n${esc(corpo)}</textarea>`,
+    footer:`<button class="btn" onclick="closeModal()">Fechar</button><button class="btn" id="mailcopy">Copiar texto</button><button class="btn primary" id="mailgo">Abrir e-mail</button>`});
+  $("#mailgo").onclick=()=>{
+    const dest=$("#mailto").value.trim();
+    const href="mailto:"+encodeURIComponent(dest)+"?subject="+encodeURIComponent(assunto)+"&body="+encodeURIComponent(corpo);
+    audit("E-mail","Manutenção",m.id,"relatório para "+(dest||"cliente"));persist();
+    location.href=href;closeModal();
+  };
+  $("#mailcopy").onclick=()=>{const t=$("#mailprev");t.select();try{document.execCommand("copy");}catch(e){}navigator.clipboard&&navigator.clipboard.writeText(assunto+"\n\n"+corpo).catch(()=>{});toast("Texto copiado.");};
+}
 function mntDetalhe(v,id){
   const m=byId("manutencoes",id);if(!m||!ativo(m))return v.innerHTML='<div class="alertbox crit">Manutenção não encontrada.</div>';
   const editavel=m.status!=="encerrada"&&can("criar");
@@ -1256,6 +1303,7 @@ function mntDetalhe(v,id){
           <button class="btn" id="salvarRasc">Salvar rascunho</button>
           <button class="btn primary" id="encerrar">Encerrar atendimento</button>
         </div>`:""}
+        <button class="btn" id="emailrel" style="margin-top:10px;width:100%">✉ Enviar relatório ao cliente</button>
         ${m.status==="encerrada"&&can("editar")?`<button class="btn sm" id="reabrir" style="margin-top:12px">Reabrir</button>`:""}
       </div>
       <div class="card pad">
@@ -1350,6 +1398,7 @@ function mntDetalhe(v,id){
     };
   }
   v.querySelector("#reabrir")&&(v.querySelector("#reabrir").onclick=()=>{m.status="aberta";const o=byId("ordens",m.osId);if(o)o.status="em_atendimento";audit("Reabertura","Manutenção",m.id);persist();router();});
+  v.querySelector("#emailrel").onclick=()=>emailManutencao(m);
   // hint
   const fh=v.querySelector("#finalHint");
   const upd=()=>{const val=v.querySelector("#finalizacao")?.value;if(val==="Aguardando peça")fh.innerHTML='<div class="alertbox" style="margin-top:10px"><span>!</span><div>A OS ficará <b>Aguardando peça</b> e uma solicitação de peça será aberta.</div></div>';else fh.innerHTML="";};
@@ -1403,7 +1452,7 @@ ROUTES.jornada=(v,rest)=>{
   <div class="card pad" style="margin-bottom:16px">
     <h3 style="margin-bottom:12px">Iniciar jornada</h3>
     <div class="formgrid">
-      <label class="f">Técnico<select id="tec">${DB.tecnicos.map(t=>`<option value="${t.id}"${t.id===VIEWER.tecnicoId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
+      <label class="f">Técnico<select id="tec">${DB.tecnicos.filter(ativo).map(t=>`<option value="${t.id}"${t.id===VIEWER.tecnicoId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
       <label class="f">Papel<select id="papel"><option value="motorista">Motorista</option><option value="passageiro">Passageiro / técnico</option></select></label>
       <label class="f">Veículo<select id="vei">${DB.veiculos.filter(x=>ativo(x)&&x.situacao==="Ativo").map(x=>`<option value="${x.id}">${esc(x.placa)} · ${esc(x.marcaModelo)} (${km(x.kmAtual)})</option>`).join("")}</select></label>
       <label class="f">KM inicial<input id="kmi" type="number"></label>
@@ -1509,7 +1558,7 @@ function veicDetalhe(v,id){
   const prevs=DB.preventivas.filter(p=>ativo(p)&&p.veiculoId===id);
   const abast=DB.abastecimentos.filter(a=>ativo(a)&&a.veiculoId===id).sort((a,b)=>new Date(b.dataHora)-new Date(a.dataHora));
   v.innerHTML=`<div class="between" style="margin-bottom:6px"><a class="btn ghost sm" href="#/veiculos">← Veículos</a>
-    <div class="actionbar">${can("editar")?`<button class="btn sm" id="edit">Editar</button><button class="btn sm" id="addpv">+ Preventiva</button>`:""}${can("excluir")?`<button class="btn sm danger" id="del">Excluir</button>`:""}</div></div>
+    <div class="actionbar">${can("editar")?`<button class="btn sm" id="edit">Editar</button><button class="btn sm" id="addpv">+ Preventiva</button><button class="btn sm danger" id="del">Excluir</button>`:""}</div></div>
   <div class="pagehead"><h1 class="mono">${esc(x.placa)}</h1><p>${esc(x.marcaModelo)} · ${x.ano} · ${esc(x.cor)} · ${esc(x.tipo)} · <span class="tnum">${km(x.kmAtual)}</span></p></div>
   <div class="detailgrid two">
     <div class="stack">
@@ -1540,7 +1589,7 @@ function veicDetalhe(v,id){
   </div>`;
   can("editar")&&(v.querySelector("#edit").onclick=()=>veicForm(v,x));
   can("editar")&&(v.querySelector("#addpv").onclick=()=>preventivaModal(x));
-  can("excluir")&&(v.querySelector("#del").onclick=()=>excluir("veiculos",id,"Veículo",()=>location.hash="#/veiculos"));
+  can("editar")&&(v.querySelector("#del").onclick=()=>excluir("veiculos",id,"Veículo",()=>location.hash="#/veiculos","editar"));
   v.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>{
     const p=byId("preventivas",b.dataset.done);p.ultData=nowISO();p.ultKm=x.kmAtual;audit("Registro","Preventiva",p.id,p.tipo);persist();toast("Preventiva registrada.");router();
   });
@@ -1858,7 +1907,7 @@ ROUTES.relatorios=(v)=>{
     const f=REL_DEFS[st.tipo].filtros;const parts=[];
     if(f.includes("periodo"))parts.push(`<label class="f">De<input type="date" id="fde" value="${st.de}"></label>`,`<label class="f">Até<input type="date" id="fate" value="${st.ate}"></label>`);
     if(f.includes("cliente"))parts.push(selField("fcli","Cliente",[["","Todos"],...DB.clientes.filter(ativo).map(c=>[c.id,c.fantasia||c.razao])],st.cliente));
-    if(f.includes("tecnico"))parts.push(selField("ftec","Técnico",[["","Todos"],...DB.tecnicos.map(t=>[t.id,t.nome])],st.tecnico));
+    if(f.includes("tecnico"))parts.push(selField("ftec","Técnico",[["","Todos"],...DB.tecnicos.filter(ativo).map(t=>[t.id,t.nome])],st.tecnico));
     if(f.includes("tipo"))parts.push(selField("ftip","Tipo de atendimento",[["","Todos"],...Object.entries(TIPOS_ATEND)],st.tipoAtend));
     if(f.includes("status"))parts.push(selField("ffin","Finalização",[["","Todas"],...FINALIZACOES.map(x=>[x,x])],st.fin));
     if(f.includes("statusOS"))parts.push(selField("fsos","Status da OS",[["","Todos"],["aberta","Aberta"],["em_atendimento","Em atendimento"],["aguardando_peca","Aguardando peça"],["aguardando_retorno","Aguardando retorno"],["encerrada","Encerrada"]],st.statusOS));
@@ -1986,6 +2035,20 @@ ROUTES.fluxo=(v)=>{
   </div>`;
 };
 
+function tecnicoModal(t){
+  modal({title:t?"Editar técnico":"Novo técnico",body:`<div class="stack">
+    <label class="f">Nome <span class="rq">*</span><input id="tn" value="${esc(t?.nome||"")}"></label>
+    <label class="f">Perfil de acesso<select id="tp">${Object.entries(PERFIS).map(([k,x])=>`<option value="${k}"${t&&t.perfil===k?" selected":""}>${x.nome}</option>`).join("")}</select></label>
+  </div>`,footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="oktec">Salvar</button>`});
+  $("#oktec").onclick=()=>{
+    const nome=$("#tn").value.trim();if(!nome)return toast("Informe o nome.");
+    const perfil=$("#tp").value;
+    if(t){t.nome=nome;t.perfil=perfil;audit("Edição","Técnico",t.id,nome);}
+    else{const n={id:uid("tec"),nome,perfil};DB.tecnicos.push(n);audit("Criação","Técnico",n.id,nome);}
+    persist();closeModal();toast("Técnico salvo.");router();
+  };
+}
+
 /* ============ CONFIGURAÇÕES ============ */
 ROUTES.config=(v)=>{
   v.innerHTML=`<div class="pagehead"><h1>Configurações</h1><p>Campos técnicos e listas do sistema. Adicionar campo não altera a estrutura do app — o cadastro do equipamento e o registro de manutenção passam a exibi-lo.</p></div>
@@ -1995,11 +2058,16 @@ ROUTES.config=(v)=>{
     <td>${can("editar")?`<button class="btn sm danger" data-rmct="${c.id}">Remover</button>`:""}</td></tr>`).join("")}
     </tbody></table></div>
   </div>
+  <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Técnicos</h3>${can("editar")?`<button class="btn sm" id="addTec">+ Técnico</button>`:""}</div>
+    <div class="list">${DB.tecnicos.filter(ativo).map(t=>`<div class="item"><span class="avatar">${esc((t.nome[0]||"?").toUpperCase())}</span>
+      <div><div class="t">${esc(t.nome)}</div><div class="d">${esc(PERFIS[t.perfil]?.nome||t.perfil)}</div></div><span class="sp"></span>
+      ${can("editar")?`<button class="btn sm" data-edtec="${t.id}">Editar</button><button class="btn sm danger" data-rmtec="${t.id}">Excluir</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhum técnico.</div>'}</div>
+  </div>
   <div class="detailgrid two">
-    <div class="card pad"><h3 style="margin-bottom:8px">Técnicos</h3>
-      <dl class="kv">${DB.tecnicos.map(t=>`<dt>${esc(t.nome)}</dt><dd>${esc(PERFIS[t.perfil]?.nome||t.perfil)}</dd>`).join("")}</dl>
-      <label class="f" style="margin-top:12px">Técnico ativo (para jornada)
-        <select id="tecAtual">${DB.tecnicos.map(t=>`<option value="${t.id}"${t.id===VIEWER.tecnicoId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
+    <div class="card pad"><h3 style="margin-bottom:8px">Técnico ativo neste aparelho</h3>
+      <label class="f">Usado ao iniciar jornada
+        <select id="tecAtual">${DB.tecnicos.filter(ativo).map(t=>`<option value="${t.id}"${t.id===VIEWER.tecnicoId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
+      <p class="small muted" style="margin-top:8px">Escolha local — não sincroniza.</p>
     </div>
     <div class="card pad"><h3 style="margin-bottom:8px">Base de dados</h3>
       <p class="small" id="syncinfo" style="margin:0 0 6px"></p>
@@ -2064,6 +2132,15 @@ alter publication supabase_realtime add table geracampo_estado;</pre>
     $("#ok").onclick=()=>{if(!$("#cn").value.trim())return toast("Informe o nome.");DB.camposTecnicos.push({id:uid("ct"),nome:$("#cn").value.trim(),tipo:$("#ct").value,obrig:$("#co").checked});audit("Criação","Campo técnico","");persist();closeModal();router();};
   });
   v.querySelectorAll("[data-rmct]").forEach(b=>b.onclick=()=>{const c=byId("camposTecnicos",b.dataset.rmct);c.excluido={ts:nowISO(),usuario:perfilNome(),motivo:"removido em configurações"};audit("Exclusão","Campo técnico",c.id);persist();router();});
+  v.querySelector("#addTec")&&(v.querySelector("#addTec").onclick=()=>tecnicoModal(null));
+  v.querySelectorAll("[data-edtec]").forEach(b=>b.onclick=()=>tecnicoModal(byId("tecnicos",b.dataset.edtec)));
+  v.querySelectorAll("[data-rmtec]").forEach(b=>b.onclick=()=>{
+    if(DB.tecnicos.filter(ativo).length<=1)return toast("Deixe ao menos um técnico ativo.");
+    excluir("tecnicos",b.dataset.rmtec,"Técnico",()=>{
+      if(VIEWER.tecnicoId===b.dataset.rmtec){const t=DB.tecnicos.find(ativo);if(t){VIEWER.tecnicoId=t.id;saveViewer();}}
+      router();
+    },"editar");
+  });
   v.querySelector("#export").onclick=()=>{toast("JSON no console.");console.log(JSON.stringify(DB,null,2));};
   v.querySelector("#reset").onclick=()=>{if(confirm(backendAtivo()?"Restaurar a base de teste? Isso substitui os dados de TODOS que usam o link.":"Restaurar a base de teste? Os dados atuais serão perdidos."))
     {DB=seed();normalizeDB();audit("Restauração","Base de teste","");persist();toast("Base restaurada.");location.hash="#/painel";router();}};
@@ -2071,7 +2148,7 @@ alter publication supabase_realtime add table geracampo_estado;</pre>
 
 /* ============ AUDITORIA ============ */
 ROUTES.auditoria=(v)=>{
-  const excl=[];["clientes","equipamentos","veiculos","produtos","solicitacoesPeca"].forEach(a=>DB[a].filter(x=>x.excluido).forEach(x=>excl.push({a,x})));
+  const excl=[];["clientes","equipamentos","veiculos","tecnicos","produtos","solicitacoesPeca","camposTecnicos"].forEach(a=>DB[a].filter(x=>x.excluido).forEach(x=>excl.push({a,x})));
   v.innerHTML=`<div class="pagehead"><h1>Auditoria</h1><p>Toda exclusão administrativa registra usuário, data/hora e motivo. Preferência por exclusão lógica em vez de apagar históricos.</p></div>
   <div class="detailgrid two">
     <div class="panel"><div class="ph"><h3>Trilha de auditoria</h3><span class="small muted">${DB.auditoria.length} evento(s)</span></div>
@@ -2080,7 +2157,7 @@ ROUTES.auditoria=(v)=>{
       </tbody></table></div>
     </div>
     <div class="panel"><div class="ph"><h3>Registros excluídos (soft delete)</h3></div>
-      <div class="list">${excl.map(({a,x})=>`<div class="item"><div><div class="t">${esc(x.razao||x.ns||x.placa||x.descricao||x.produtoNome||x.id)}</div>
+      <div class="list">${excl.map(({a,x})=>`<div class="item"><div><div class="t">${esc(x.razao||x.ns||x.placa||x.nome||x.descricao||x.produtoNome||x.id)}</div>
       <div class="d">${esc(a)} · ${esc(x.excluido.usuario)} · ${fmtDT(x.excluido.ts)}</div>
       <div class="small muted">${esc(x.excluido.motivo)}</div></div>
       <span class="sp"></span>${can("excluir")?`<button class="btn sm" data-restore="${a}:${x.id}">Restaurar</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhum registro excluído.</div>'}
