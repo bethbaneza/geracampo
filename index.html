@@ -1916,10 +1916,10 @@ ROUTES.config=(v)=>{
   </div>
   <div class="panel" style="margin-top:16px"><div class="ph"><h3>Conexão com Supabase (opcional)</h3><span class="small muted" id="supastatus"></span></div>
     <div class="pb" style="padding:16px">
-      <p class="small muted" style="margin:0 0 12px">Liga o app a um projeto Supabase para os dados serem compartilhados em tempo real entre todos que abrem o link — em qualquer host (GitHub Pages, etc.), sem login. As chaves ficam só neste navegador; não vão para o GitHub. A <b>anon key</b> é pública por natureza — use apenas para testes fechados.</p>
+      <p class="small muted" style="margin:0 0 12px">Liga o app a um projeto Supabase para os dados serem compartilhados em tempo real entre todos que abrem o link — em qualquer host (GitHub Pages, etc.), sem login. As chaves ficam só neste navegador; não vão para o GitHub. A chave <b>publishable / anon</b> é pública por natureza — use apenas para testes fechados.</p>
       <div class="formgrid">
         <label class="f full">URL do projeto<input id="supaurl" placeholder="https://xxxxxxxx.supabase.co"></label>
-        <label class="f full">Chave anon (public)<input id="supakey" placeholder="eyJhbGciOi..."></label>
+        <label class="f full">Chave publishable (ou anon)<input id="supakey" placeholder="sb_publishable_...  ou  eyJhbGciOi..."></label>
       </div>
       <div class="actionbar" style="margin-top:12px">
         <button class="btn primary" id="supaconnect">Conectar e recarregar</button>
@@ -1934,8 +1934,8 @@ ROUTES.config=(v)=>{
 );
 alter table geracampo_estado enable row level security;
 create policy "acesso de teste" on geracampo_estado
-  for all to anon using (true) with check (true);
-grant all on table geracampo_estado to anon;
+  for all using (true) with check (true);
+grant all on table geracampo_estado to anon, authenticated;
 alter publication supabase_realtime add table geracampo_estado;</pre>
     </div>
   </div>`;
@@ -1953,7 +1953,7 @@ alter publication supabase_realtime add table geracampo_estado;</pre>
     const key=v.querySelector("#supakey").value.trim();
     const mm=url.match(/https:\/\/[a-z0-9-]+\.supabase\.co/i);
     if(mm)url=mm[0];else return toast("URL inválida — use https://xxxx.supabase.co (sem /rest/v1).");
-    if(key.length<20)return toast("Cole a chave anon completa (começa com eyJ...).");
+    if(key.length<20)return toast("Cole a chave completa (sb_publishable_... ou eyJ...).");
     setSupaCfg({url,key});toast("Conectando ao Supabase…");setTimeout(()=>location.reload(),400);
   };
   v.querySelector("#supadisc").onclick=()=>{if(confirm("Desconectar do Supabase? O app volta ao modo local neste dispositivo (os dados permanecem no Supabase)."))

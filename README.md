@@ -18,8 +18,27 @@ Camada técnica/operacional — a Ordem de Serviço oficial continua no **Bling*
 | Arquivo local / GitHub Pages / qualquer host estático | `localStorage` do navegador — **um dispositivo por vez**, sem login |
 | Publicado como Artifact no claude.ai | Base compartilhada em tempo real entre quem abre o link (contas Claude da mesma organização); fotos ficam no aparelho de quem tira |
 
-Para dados compartilhados entre pessoas diferentes fora do claude.ai é preciso um backend
-(ex.: Firebase/Supabase) — não incluso.
+### Supabase (dados compartilhados em qualquer host)
+
+Em *Configurações → Conexão com Supabase*, informe a URL do projeto e a chave
+publishable/anon. SQL de criação (rode uma vez no SQL Editor):
+
+```sql
+create table geracampo_estado (
+  col text primary key,
+  items jsonb not null default '[]',
+  updated_at timestamptz default now(),
+  updated_by text
+);
+alter table geracampo_estado enable row level security;
+create policy "acesso de teste" on geracampo_estado
+  for all using (true) with check (true);
+grant all on table geracampo_estado to anon, authenticated;
+alter publication supabase_realtime add table geracampo_estado;
+```
+
+A chave publishable é pública (vai no navegador). A policy acima libera geral —
+adequada só para testes fechados.
 
 ## Base de teste
 
