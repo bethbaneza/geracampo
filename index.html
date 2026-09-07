@@ -495,6 +495,8 @@ function normalizeDB(){
   let adm=DB.tecnicos.find(t=>(t.login||"").toLowerCase()==="admin");
   if(adm){delete adm.excluido;adm.papel="admin";}
   else DB.tecnicos.push({id:"tec-admin",nome:"Administrador",login:"admin",senha:hashSenha("admin"),papel:"admin"});
+  // migração: abastecimentos -> despesas com categoria
+  DB.abastecimentos.forEach(a=>{if(!a.categoria)a.categoria="combustivel";});
   // config padrão
   if(!DB.configs.length)DB.configs=[{id:"main",empresa:"Minha Empresa",equipLabel:"Equipamento",equipLabelPlural:"Equipamentos",setorLabel:"Setor atendido",osExterna:"Bling",medicoes:[]}];
 }
@@ -650,6 +652,8 @@ const STATUS_EQUIP=["Ativo","Em manutenção","Em estoque","Retirado","Descartad
 const RELACAO={locacao:"Cliente de locação",assistencia:"Cliente de assistência técnica",locacao_assistencia:"Locação + assistência técnica"};
 const FINALIZACOES=["Resolvido","Resolvido parcialmente","Necessita retorno","Aguardando peça","Aguardando cliente"];
 const PROX_ACOES={nenhuma:"Nenhuma",retorno:"Retorno",preventiva:"Preventiva",monitoramento:"Monitoramento"};
+const CAT_DESPESA={combustivel:{nome:"Combustível"},alimentacao:{nome:"Alimentação"},pedagio:{nome:"Pedágio"},estacionamento:{nome:"Estacionamento"},hospedagem:{nome:"Hospedagem"},manutencao_vei:{nome:"Manutenção do veículo"},outros:{nome:"Outros"}};
+const catDespNome=c=>CAT_DESPESA[c]?.nome||c||"—";
 
 function tipoAtendPill(t){const c=t==="locacao"?"accent":t==="garantia"?"info":t==="assistencia"?"warn":t==="cortesia"?"good":"";return `<span class="pill ${c}">${esc(TIPOS_ATEND[t]||"—")}</span>`;}
 function osStatusPill(s){const m={aberta:["warn","Aberta"],em_atendimento:["info","Em atendimento"],aguardando_peca:["crit","Aguardando peça"],aguardando_retorno:["warn","Aguardando retorno"],encerrada:["good","Encerrada"]};const x=m[s]||["","—"];return `<span class="pill ${x[0]}"><span class="dot"></span>${x[1]}</span>`;}
@@ -692,7 +696,7 @@ const NAV=()=>[
   {r:"equipamentos",t:navEquip(),i:"cpu"},
   {r:"veiculos",t:"Veículos",i:"truck"},
   {r:"estoque",t:"Peças & estoque",i:"box"},
-  {r:"abastecimento",t:"Abastecimento",i:"fuel"},
+  {r:"despesas",t:"Gastos & despesas",i:"wallet"},
   {g:"Gestão"},
   {r:"indicadores",t:"Indicadores",i:"chart"},
   {r:"relatorios",t:"Relatórios",i:"report"},
@@ -715,7 +719,8 @@ const ICONS={
   report:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h8M8 9h2"/>',
   sliders:'<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
   shield:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>',
-  menu:'<circle cx="5" cy="6" r="1.6"/><circle cx="5" cy="12" r="1.6"/><circle cx="5" cy="18" r="1.6"/><path d="M11 6h10M11 12h10M11 18h10"/>'
+  menu:'<circle cx="5" cy="6" r="1.6"/><circle cx="5" cy="12" r="1.6"/><circle cx="5" cy="18" r="1.6"/><path d="M11 6h10M11 12h10M11 18h10"/>',
+  wallet:'<path d="M4 7a2 2 0 0 1 2-2h12v4M4 7v10a2 2 0 0 0 2 2h13v-4M4 7h14M17 13h4v3h-4a1.5 1.5 0 0 1 0-3Z"/>'
 };
 /* tab bar do celular: 4 ações principais + Mais */
 const TABS=[
@@ -732,7 +737,7 @@ const MAIS=()=>[
   {r:"equipamentos",t:navEquip(),i:"cpu",d:"Prontuário por número de série"},
   {r:"veiculos",t:"Veículos",i:"truck",d:"Frota e preventivas"},
   {r:"estoque",t:"Peças & estoque",i:"box",d:"Produtos e solicitações"},
-  {r:"abastecimento",t:"Abastecimento",i:"fuel",d:"Registro e QR Code"},
+  {r:"despesas",t:"Gastos & despesas",i:"wallet",d:"Combustível, alimentação, pedágio…"},
   {r:"indicadores",t:"Indicadores",i:"chart",d:"Painel gerencial"},
   {r:"relatorios",t:"Relatórios",i:"report",d:"PDF e CSV"},
   {r:"fluxo",t:"Fluxo macro",i:"flow",d:"Visão de ponta a ponta"},
@@ -850,7 +855,7 @@ function excluir(arr,id,label,after){
 
 /* ---------- ROUTER ---------- */
 const ROUTES={};
-const crumbMap={painel:"Painel",jornada:"Jornada",os:"Ordens de Serviço",manutencoes:"Manutenções",mais:"Mais",clientes:"Clientes",equipamentos:"Equipamentos / NS",veiculos:"Veículos",estoque:"Peças & estoque",abastecimento:"Abastecimento",indicadores:"Indicadores",relatorios:"Relatórios",fluxo:"Fluxo macro",config:"Configurações",auditoria:"Auditoria"};
+const crumbMap={painel:"Painel",jornada:"Jornada",os:"Ordens de Serviço",manutencoes:"Manutenções",mais:"Mais",clientes:"Clientes",equipamentos:"Equipamentos / NS",veiculos:"Veículos",estoque:"Peças & estoque",despesas:"Gastos & despesas",abastecimento:"Gastos & despesas",indicadores:"Indicadores",relatorios:"Relatórios",fluxo:"Fluxo macro",config:"Configurações",auditoria:"Auditoria"};
 function router(){
   const h=(location.hash||"#/painel").slice(2);
   const [r,...rest]=h.split("/");
@@ -1750,9 +1755,9 @@ function veicDetalhe(v,id){
         <td><span class="pill ${s.cls}">${s.label}</span></td>
         <td class="nowrap">${can("editar")?`<button class="btn sm" data-done="${p.id}">Registrar</button> `:""}${can("excluir")?`<button class="btn sm danger" data-rmpv="${p.id}">×</button>`:""}</td></tr>`;}).join("")||'<tr><td colspan="6" class="muted">Sem preventivas.</td></tr>'}
       </tbody></table></div></div>
-      <div class="panel"><div class="ph"><h3>Abastecimentos</h3><a class="btn ghost sm" href="#/abastecimento">Registrar</a></div>
-      <div class="tblwrap"><table class="tbl"><thead><tr><th>Data</th><th>Posto</th><th>Litros</th><th>Total</th><th>R$/L</th><th></th></tr></thead><tbody>
-      ${abast.map(a=>`<tr><td>${fmtDate(a.dataHora)}</td><td>${esc(a.posto)}</td><td class="tnum">${a.litros}</td><td class="tnum">${money(a.valorTotal)}</td><td class="tnum">${money(a.precoLitro)}</td><td class="nowrap">${can("editar")?`<button class="btn sm" data-edab="${a.id}">Editar</button> `:""}${can("excluir")?`<button class="btn sm danger" data-rmab="${a.id}">×</button>`:""}</td></tr>`).join("")||'<tr><td colspan="6" class="muted">Nenhum.</td></tr>'}
+      <div class="panel"><div class="ph"><h3>Despesas do veículo</h3><a class="btn ghost sm" href="#/despesas">Registrar</a></div>
+      <div class="tblwrap"><table class="tbl"><thead><tr><th>Data</th><th>Categoria</th><th>Descrição</th><th>Total</th><th></th></tr></thead><tbody>
+      ${abast.map(a=>`<tr><td>${fmtDate(a.dataHora)}</td><td class="small">${esc(catDespNome(a.categoria))}</td><td class="small">${esc(a.descricao||a.posto||"—")}</td><td class="tnum">${money(a.valorTotal)}</td><td class="nowrap">${can("editar")?`<button class="btn sm" data-edab="${a.id}">Editar</button> `:""}${can("excluir")?`<button class="btn sm danger" data-rmab="${a.id}">×</button>`:""}</td></tr>`).join("")||'<tr><td colspan="5" class="muted">Nenhuma.</td></tr>'}
       </tbody></table></div></div>
     </div>
     <div class="card pad"><h3 style="margin-bottom:10px">Dados</h3>
@@ -1878,74 +1883,88 @@ ROUTES.estoque=(v)=>{
   draw();
 };
 
-function abastecimentoModal(a){
-  if(!a)return;
-  modal({title:"Editar abastecimento",body:`<div class="formgrid">
-    <label class="f">Posto<input id="ea_posto" value="${esc(a.posto||"")}"></label>
-    <label class="f">Data / hora<input id="ea_dh" type="datetime-local" value="${esc((a.dataHora||"").slice(0,16))}"></label>
-    <label class="f">Combustível<input id="ea_comb" value="${esc(a.combustivel||"")}"></label>
-    <label class="f">Litros<input id="ea_l" type="number" step="any" value="${esc(a.litros)}"></label>
-    <label class="f">Valor total<input id="ea_v" type="number" step="any" value="${esc(a.valorTotal)}"></label>
-    <label class="f">Preço/litro<input id="ea_p" type="number" step="any" value="${esc(a.precoLitro)}"></label>
-    <label class="f full">Documento fiscal<input id="ea_doc" value="${esc(a.docFiscal||"")}"></label>
-    <label class="f full">Veículo<select id="ea_vei">${DB.veiculos.filter(ativo).map(x=>`<option value="${x.id}"${a.veiculoId===x.id?" selected":""}>${esc(x.placa)}</option>`).join("")}</select></label>
-  </div>`,footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="ea_ok">Salvar</button>`});
-  $("#ea_ok").onclick=()=>{
-    a.posto=$("#ea_posto").value.trim();a.dataHora=$("#ea_dh").value;a.combustivel=$("#ea_comb").value.trim();
-    a.litros=+$("#ea_l").value||0;a.valorTotal=+$("#ea_v").value||0;a.precoLitro=+$("#ea_p").value||(a.litros?a.valorTotal/a.litros:0);
-    a.docFiscal=$("#ea_doc").value.trim();a.veiculoId=$("#ea_vei").value;
-    audit("Edição","Abastecimento",a.id);persist();closeModal();toast("Abastecimento salvo.");router();
+/* ============ GASTOS & DESPESAS ============ */
+function despesaModal(d){
+  const nova=!d;const jA=jornadaAberta();
+  d=d||{categoria:"combustivel",dataHora:new Date().toISOString().slice(0,16),jornadaId:jA?jA.id:null,veiculoId:jA?jA.veiculoId:null};
+  modal({title:nova?"Nova despesa":"Editar despesa",wide:true,body:`
+    <label class="f">Categoria<select id="dcat">${Object.entries(CAT_DESPESA).map(([k,x])=>`<option value="${k}"${d.categoria===k?" selected":""}>${x.nome}</option>`).join("")}</select></label>
+    <div id="dcomb" style="margin-top:12px">
+      <button type="button" class="btn sm" id="dscan" style="margin-bottom:8px">⛶ Simular QR Code (nota do posto)</button>
+      <div class="formgrid">
+        <label class="f">Posto<input id="d_posto" value="${esc(d.posto||"")}"></label>
+        <label class="f">Combustível<select id="d_comb">${["Gasolina","Etanol","Diesel","GNV"].map(c=>`<option${d.combustivel===c?" selected":""}>${c}</option>`).join("")}</select></label>
+        <label class="f">Litros<input id="d_l" type="number" step="any" value="${esc(d.litros??"")}"></label>
+        <label class="f">Preço / litro<input id="d_p" type="number" step="any" value="${esc(d.precoLitro??"")}"></label>
+      </div>
+    </div>
+    <div id="dger" style="margin-top:12px">
+      <label class="f">Descrição<input id="d_desc" value="${esc(d.descricao||"")}" placeholder="Ex.: Almoço — Restaurante do Zé"></label>
+    </div>
+    <div class="formgrid" style="margin-top:12px">
+      <label class="f">Data / hora<input id="d_dh" type="datetime-local" value="${esc((d.dataHora||"").slice(0,16))}"></label>
+      <label class="f">Valor total <span class="rq">*</span><input id="d_v" type="number" step="any" value="${esc(d.valorTotal??"")}"></label>
+      <label class="f">Documento fiscal (opcional)<input id="d_doc" value="${esc(d.docFiscal||"")}"></label>
+      <label class="f">Veículo (opcional)<select id="d_vei"><option value="">— nenhum —</option>${DB.veiculos.filter(ativo).map(x=>`<option value="${x.id}"${d.veiculoId===x.id?" selected":""}>${esc(x.placa)}</option>`).join("")}</select></label>
+      <label class="f">Jornada (opcional)<select id="d_jor"><option value="">— nenhuma —</option>${DB.jornadas.filter(ativo).slice(0,12).map(j=>`<option value="${j.id}"${d.jornadaId===j.id?" selected":""}>${fmtDate(j.criadaEm)} · ${esc(byId("veiculos",j.veiculoId)?.placa||"")}</option>`).join("")}</select></label>
+    </div>`,
+    footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="dok">Salvar</button>`});
+  const sync=()=>{const c=$("#dcat").value;$("#dcomb").hidden=c!=="combustivel";$("#dger").hidden=c==="combustivel";};
+  $("#dcat").onchange=sync;sync();
+  const recalc=()=>{const l=+$("#d_l").value,p=+$("#d_p").value;if(l&&p)$("#d_v").value=(l*p).toFixed(2);};
+  $("#d_l").oninput=recalc;$("#d_p").oninput=recalc;
+  $("#dscan").onclick=()=>{
+    const postos=["Posto Trevo","Auto Posto Central","Posto Ipiranga BR277","Shell Rodovia"];
+    const litros=+(20+Math.random()*35).toFixed(2),preco=+(5.6+Math.random()).toFixed(2);
+    $("#d_posto").value=postos[Math.floor(Math.random()*postos.length)];
+    $("#d_l").value=litros;$("#d_p").value=preco;$("#d_v").value=(litros*preco).toFixed(2);
+    $("#d_doc").value="NFC-e "+Math.random().toString().slice(2,13)+"…";
+    toast("Dados extraídos do QR Code — confira antes de salvar.");
+  };
+  $("#dok").onclick=()=>{
+    const cat=$("#dcat").value,valor=+$("#d_v").value||0;
+    if(!valor)return toast("Informe o valor total.");
+    const base={categoria:cat,dataHora:$("#d_dh").value||nowISO(),valorTotal:valor,docFiscal:$("#d_doc").value.trim(),veiculoId:$("#d_vei").value||null,jornadaId:$("#d_jor").value||null};
+    if(cat==="combustivel"){base.posto=$("#d_posto").value.trim();base.combustivel=$("#d_comb").value;base.litros=+$("#d_l").value||0;base.precoLitro=+$("#d_p").value||(base.litros?valor/base.litros:0);base.descricao=base.posto?"Abastecimento — "+base.posto:"Abastecimento";}
+    else{base.descricao=$("#d_desc").value.trim()||CAT_DESPESA[cat].nome;base.posto="";base.litros=0;base.precoLitro=0;base.combustivel="";}
+    if(d.id){Object.assign(d,base);audit("Edição","Despesa",d.id,CAT_DESPESA[cat].nome);}
+    else{const n={id:uid("desp"),criadoEm:nowISO(),...base};DB.abastecimentos.unshift(n);audit("Criação","Despesa",n.id,CAT_DESPESA[cat].nome);}
+    persist();closeModal();toast("Despesa salva.");router();
   };
 }
-/* ============ ABASTECIMENTO ============ */
-ROUTES.abastecimento=(v)=>{
-  v.innerHTML=`<div class="pagehead"><h1>Abastecimento</h1><p>Fluxo: abastecer → escanear o QR Code do documento fiscal → conferir dados → confirmar → vincular ao veículo/jornada. Sempre editável; se o QR não ler, preenchimento manual.</p></div>
-  <div class="detailgrid two">
-    <div class="card pad">
-      <h3 style="margin-bottom:10px">Novo registro</h3>
-      <div class="row" style="margin-bottom:12px">
-        <button class="btn" id="scan">⛶ Simular leitura de QR Code</button>
-      </div>
-      <div class="formgrid">
-        <label class="f">Posto<input id="posto"></label>
-        <label class="f">Data / hora<input id="dataHora" type="datetime-local" value="${new Date().toISOString().slice(0,16)}"></label>
-        <label class="f">Combustível<select id="combustivel"><option>Gasolina</option><option>Etanol</option><option>Diesel</option><option>GNV</option></select></label>
-        <label class="f">Litros<input id="litros" type="number" step="any"></label>
-        <label class="f">Valor total<input id="valorTotal" type="number" step="any"></label>
-        <label class="f">Preço por litro<input id="precoLitro" type="number" step="any"></label>
-        <label class="f full">Documento fiscal<input id="docFiscal" placeholder="Chave / número da NFC-e"></label>
-        <label class="f">Veículo<select id="veiculoId">${DB.veiculos.filter(ativo).map(x=>`<option value="${x.id}">${esc(x.placa)} · ${esc(x.marcaModelo)}</option>`).join("")}</select></label>
-        <label class="f">Jornada<select id="jornadaId"><option value="">— nenhuma —</option>${DB.jornadas.filter(ativo).slice(0,8).map(j=>`<option value="${j.id}">${fmtDate(j.criadaEm)} · ${esc(byId("veiculos",j.veiculoId)?.placa)}</option>`).join("")}</select></label>
-      </div>
-      <button class="btn primary" id="save" style="margin-top:14px">Confirmar e vincular</button>
-    </div>
-    <div class="panel"><div class="ph"><h3>Últimos abastecimentos</h3></div>
-      <div class="tblwrap"><table class="tbl"><thead><tr><th>Data</th><th>Veículo</th><th>L</th><th>Total</th><th></th></tr></thead><tbody>
-      ${DB.abastecimentos.filter(ativo).sort((a,b)=>new Date(b.dataHora)-new Date(a.dataHora)).map(a=>`<tr><td>${fmtDate(a.dataHora)}</td><td class="mono">${esc(byId("veiculos",a.veiculoId)?.placa||"—")}</td><td class="tnum">${a.litros}</td><td class="tnum">${money(a.valorTotal)}</td><td class="nowrap">${can("editar")?`<button class="btn sm" data-edab="${a.id}">Editar</button> `:""}${can("excluir")?`<button class="btn sm danger" data-rmab="${a.id}">×</button>`:""}</td></tr>`).join("")||'<tr><td colspan="5" class="muted">Nenhum.</td></tr>'}
-      </tbody></table></div>
-    </div>
-  </div>`;
-  v.querySelectorAll("[data-edab]").forEach(b=>b.onclick=()=>abastecimentoModal(byId("abastecimentos",b.dataset.edab)));
-  v.querySelectorAll("[data-rmab]").forEach(b=>b.onclick=()=>excluir("abastecimentos",b.dataset.rmab,"Abastecimento",()=>router()));
-  const jA=jornadaAberta();if(jA)v.querySelector("#jornadaId").value=jA.id;
-  v.querySelector("#scan").onclick=()=>{
-    const postos=["Posto Trevo","Auto Posto Central","Posto Ipiranga BR277","Shell Rodovia"];
-    const litros=+(20+Math.random()*35).toFixed(2);const preco=+(5.6+Math.random()*1).toFixed(2);
-    v.querySelector("#posto").value=postos[Math.floor(Math.random()*postos.length)];
-    v.querySelector("#litros").value=litros;v.querySelector("#precoLitro").value=preco;
-    v.querySelector("#valorTotal").value=+(litros*preco).toFixed(2);
-    v.querySelector("#docFiscal").value="NFC-e "+Math.random().toString().slice(2,13)+"…";
-    toast("Dados extraídos do QR Code — confira antes de confirmar.");
+const abastecimentoModal=despesaModal;
+ROUTES.despesas=(v)=>{
+  let f="todas";
+  const draw=()=>{
+    let list=DB.abastecimentos.filter(ativo).sort((a,b)=>new Date(b.dataHora||b.criadoEm)-new Date(a.dataHora||a.criadoEm));
+    if(f!=="todas")list=list.filter(a=>(a.categoria||"combustivel")===f);
+    const tot=list.reduce((s,a)=>s+(+a.valorTotal||0),0);
+    v.querySelector("#dtot").textContent=money(tot);
+    v.querySelector("#dlist").innerHTML=list.map(a=>{
+      const c=a.categoria||"combustivel";
+      return `<div class="item">
+        <span class="pill ${c==="combustivel"?"accent":"info"}">${esc(catDespNome(c))}</span>
+        <div><div class="t">${esc(a.descricao||a.posto||catDespNome(c))}</div>
+        <div class="d">${fmtDate(a.dataHora||a.criadoEm)}${a.veiculoId?" · "+esc(byId("veiculos",a.veiculoId)?.placa||""):""}${c==="combustivel"&&a.litros?" · "+a.litros+" L":""}</div></div>
+        <span class="sp"></span><b class="tnum" style="margin-right:4px">${money(a.valorTotal)}</b>
+        ${can("editar")?`<button class="btn sm" data-edab="${a.id}">Editar</button>`:""}${can("excluir")?`<button class="btn sm danger" data-rmab="${a.id}">×</button>`:""}
+      </div>`;
+    }).join("")||'<div class="emptyst">Nenhuma despesa registrada.</div>';
+    v.querySelectorAll("[data-edab]").forEach(b=>b.onclick=()=>despesaModal(byId("abastecimentos",b.dataset.edab)));
+    v.querySelectorAll("[data-rmab]").forEach(b=>b.onclick=()=>excluir("abastecimentos",b.dataset.rmab,"Despesa",()=>router()));
   };
-  v.querySelector("#litros").oninput=recalc;v.querySelector("#valorTotal").oninput=recalc;
-  function recalc(){const l=+v.querySelector("#litros").value,t=+v.querySelector("#valorTotal").value;if(l&&t)v.querySelector("#precoLitro").value=(t/l).toFixed(3);}
-  v.querySelector("#save").onclick=()=>{
-    const g=id=>v.querySelector("#"+id).value;
-    if(!g("litros")||!g("valorTotal"))return toast("Informe litros e valor total.");
-    const n={id:uid("ab"),criadoEm:nowISO(),posto:g("posto"),dataHora:g("dataHora"),combustivel:g("combustivel"),litros:+g("litros"),valorTotal:+g("valorTotal"),precoLitro:+g("precoLitro")||(+g("valorTotal")/+g("litros")),docFiscal:g("docFiscal"),veiculoId:g("veiculoId"),jornadaId:g("jornadaId")||null};
-    DB.abastecimentos.unshift(n);audit("Criação","Abastecimento",n.id);persist();toast("Abastecimento registrado.");router();
-  };
+  v.innerHTML=`<div class="pagehead between"><div><h1>Gastos &amp; despesas</h1><p>Combustível, alimentação, pedágio, estacionamento e outros custos de campo — vinculados ao veículo e à jornada.</p></div>
+    ${can("criar")?`<button class="btn primary" id="addDesp">+ Nova despesa</button>`:""}</div>
+  <div class="chips" style="margin-bottom:12px">
+    <button class="chip on" data-f="todas">Todas</button>${Object.entries(CAT_DESPESA).map(([k,x])=>`<button class="chip" data-f="${k}">${x.nome}</button>`).join("")}
+  </div>
+  <div class="card pad" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center"><span class="muted small">Total no filtro</span><b class="tnum" id="dtot" style="font-size:19px"></b></div>
+  <div class="panel"><div class="list" id="dlist"></div></div>`;
+  v.querySelector("#addDesp")&&(v.querySelector("#addDesp").onclick=()=>despesaModal(null));
+  v.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{v.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));c.classList.add("on");f=c.dataset.f;draw();});
+  draw();
 };
+ROUTES.abastecimento=(v)=>ROUTES.despesas(v);
 
 /* ============ INDICADORES ============ */
 ROUTES.indicadores=(v)=>{
@@ -1955,15 +1974,24 @@ ROUTES.indicadores=(v)=>{
   const porMes={};DB.manutencoes.filter(ativo).forEach(m=>{const k=new Date(m.criadaEm).toLocaleDateString("pt-BR",{month:"short",year:"2-digit"});porMes[k]=(porMes[k]||0)+1;});
   const kmTotal=DB.jornadas.filter(j=>ativo(j)&&j.kmFinal).reduce((s,j)=>s+(j.kmFinal-j.kmInicial),0);
   const custoPecas=DB.manutencoes.filter(ativo).flatMap(m=>m.pecas||[]).reduce((s,p)=>s+(byId("produtos",p.produtoId)?.custo||0)*p.qtd,0);
-  const custoComb=DB.abastecimentos.filter(ativo).reduce((s,a)=>s+a.valorTotal,0);
-  v.innerHTML=`<div class="pagehead"><h1>Indicadores</h1><p>Painel gerencial. Estrutura preparada para cruzar veículo → KM → abastecimento → visitas → clientes → OS → equipamentos → peças → tempo.</p></div>
+  const desp=DB.abastecimentos.filter(ativo);
+  const custoComb=desp.filter(a=>(a.categoria||"combustivel")==="combustivel").reduce((s,a)=>s+(+a.valorTotal||0),0);
+  const custoDesp=desp.reduce((s,a)=>s+(+a.valorTotal||0),0);
+  const despPorCat={};desp.forEach(a=>{const c=a.categoria||"combustivel";despPorCat[c]=(despPorCat[c]||0)+(+a.valorTotal||0);});
+  const maxDesp=Math.max(1,...Object.values(despPorCat));
+  v.innerHTML=`<div class="pagehead"><h1>Indicadores</h1><p>Painel gerencial: veículo, KM, despesas, visitas, clientes, OS, equipamentos, peças e tempo.</p></div>
   <div class="kpis" style="margin-bottom:20px">
     <div class="kpi"><div class="lab">Manutenções (mês)</div><div class="val tnum">${i.mntMes.length}</div></div>
     <div class="kpi"><div class="lab">KM rodado (total)</div><div class="val tnum" style="font-size:20px">${km(kmTotal)}</div></div>
-    <div class="kpi"><div class="lab">Custo de peças</div><div class="val" style="font-size:18px">${money(custoPecas)}</div></div>
-    <div class="kpi"><div class="lab">Custo combustível</div><div class="val" style="font-size:18px">${money(custoComb)}</div></div>
+    <div class="kpi"><div class="lab">Custo de peças</div><div class="val" style="font-size:17px">${money(custoPecas)}</div></div>
+    <div class="kpi"><div class="lab">Combustível</div><div class="val" style="font-size:17px">${money(custoComb)}</div></div>
+    <div class="kpi"><div class="lab">Despesas (total)</div><div class="val" style="font-size:17px">${money(custoDesp)}</div></div>
     <div class="kpi ${i.estCrit.length?"crit":"good"}"><div class="lab">Estoque crítico</div><div class="val tnum">${i.estCrit.length}</div></div>
     <div class="kpi ${i.prevVenc.length?"crit":"good"}"><div class="lab">Preventivas vencidas</div><div class="val tnum">${i.prevVenc.length}</div></div>
+  </div>
+  <div class="card pad" style="margin-bottom:16px"><h3 style="margin-bottom:14px">Despesas por categoria</h3>
+    ${Object.entries(despPorCat).sort((a,b)=>b[1]-a[1]).map(([k,val])=>`<div style="margin-bottom:10px"><div class="between small"><span>${esc(catDespNome(k))}</span><span class="tnum">${money(val)}</span></div>
+    <div style="height:8px;background:var(--surface-3);border-radius:4px;overflow:hidden;margin-top:3px"><div style="height:100%;width:${val/maxDesp*100}%;background:var(--accent)"></div></div></div>`).join("")||'<p class="muted small">Nenhuma despesa registrada.</p>'}
   </div>
   <div class="detailgrid two">
     <div class="card pad"><h3 style="margin-bottom:14px">Manutenções por natureza do atendimento</h3>
@@ -1999,7 +2027,7 @@ const REL_DEFS={
   os:{nome:"Ordens de Serviço",filtros:["periodo","cliente","statusOS"]},
   pecas:{nome:"Peças utilizadas e custo",filtros:["periodo","cliente"]},
   jornadas:{nome:"Jornadas, KM e tempo",filtros:["periodo","tecnico","veiculo"]},
-  abastecimentos:{nome:"Abastecimentos",filtros:["periodo","veiculo"]},
+  despesas:{nome:"Gastos & despesas",filtros:["periodo","veiculo"]},
   preventivas:{nome:"Preventivas de veículos",filtros:["veiculo"]},
   prontuario:{nome:"Prontuário do equipamento (laudo)",filtros:["equipamento","periodo"]},
   cliente:{nome:"Histórico do cliente",filtros:["cliente","periodo"]}
@@ -2068,15 +2096,17 @@ ROUTES.relatorios=(v)=>{
         colunas:["Data","Técnico","Veículo","KM inicial","KM final","Percorrido","Visitas","Duração"],
         linhas,totais:[{l:"Jornadas",n:r.length},{l:"KM percorrido",n:km(totKm)},{l:"Visitas",n:totVis},{l:"Encerradas",n:r.filter(j=>j.status==="encerrada").length}]};
     },
-    abastecimentos(){
+    despesas(){
       let r=DB.abastecimentos.filter(ativo).filter(a=>per(a.dataHora||a.criadoEm));
       if(st.veiculo)r=r.filter(a=>a.veiculoId===st.veiculo);
       r.sort((a,b)=>new Date(a.dataHora)-new Date(b.dataHora));
-      let totL=0,totV=0;
-      const linhas=r.map(a=>{totL+=a.litros;totV+=a.valorTotal;return[fmtDate(a.dataHora),byId("veiculos",a.veiculoId)?.placa||"—",a.posto||"—",a.combustivel||"—",a.litros,money(a.valorTotal),money(a.precoLitro),a.docFiscal||"—"];});
-      return{titulo:"Relatório de abastecimentos",
-        colunas:["Data","Veículo","Posto","Combustível","Litros","Valor total","R$/L","Documento fiscal"],
-        linhas,totais:[{l:"Registros",n:r.length},{l:"Litros",n:totL.toFixed(1)},{l:"Valor total",n:money(totV)},{l:"Preço médio",n:money(totL?totV/totL:0)}]};
+      let totL=0,totV=0;const porCat={};
+      const linhas=r.map(a=>{const c=a.categoria||"combustivel";totL+=(+a.litros||0);totV+=(+a.valorTotal||0);porCat[c]=(porCat[c]||0)+(+a.valorTotal||0);
+        return[fmtDate(a.dataHora),catDespNome(c),a.descricao||a.posto||"—",byId("veiculos",a.veiculoId)?.placa||"—",c==="combustivel"&&a.litros?a.litros:"",money(a.valorTotal),a.docFiscal||"—"];});
+      const catTot=Object.entries(porCat).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([k,val])=>catDespNome(k).split(" ")[0]+" "+money(val)).join(" · ");
+      return{titulo:"Relatório de gastos & despesas",
+        colunas:["Data","Categoria","Descrição","Veículo","Litros","Valor","Documento"],
+        linhas,totais:[{l:"Lançamentos",n:r.length},{l:"Total",n:money(totV)},{l:"Combustível (L)",n:totL.toFixed(1)},{l:"Maiores categorias",n:catTot||"—"}]};
     },
     preventivas(){
       let r=DB.preventivas.filter(ativo);
