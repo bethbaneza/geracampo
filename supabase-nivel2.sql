@@ -99,6 +99,12 @@ create table if not exists auditoria (
 alter table auditoria enable row level security;
 create index if not exists auditoria_emp_idx on auditoria (empresa_id, ts desc);
 
+create table if not exists backup_diario (
+  feito_em timestamptz primary key default now(),
+  dados jsonb not null
+);
+alter table backup_diario enable row level security;   -- sem policy = ninguém acessa pela API
+
 -- ---------- 5. RLS -------------------------------------------------
 -- perfis
 drop policy if exists perfis_sel on perfis;
@@ -187,12 +193,7 @@ begin
 end $$;
 
 -- ---------- 8. BACKUP DIÁRIO AUTOMÁTICO (grátis) ------------------
-create table if not exists backup_diario (
-  feito_em timestamptz primary key default now(),
-  dados jsonb not null
-);
-alter table backup_diario enable row level security;   -- sem policy = ninguém acessa pela API
-
+-- (a tabela backup_diario já foi criada no passo 4)
 create extension if not exists pg_cron;
 do $$ begin perform cron.unschedule('backup-geracampo'); exception when others then null; end $$;
 select cron.schedule('backup-geracampo', '0 5 * * *', $CRON$
