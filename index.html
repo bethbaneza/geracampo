@@ -491,11 +491,10 @@ function normalizeDB(){
     usados.add(t.login);
     if(!t.senha)t.senha=hashSenha("1234");
   });
-  if(!DB.tecnicos.some(t=>t.papel==="admin"&&!t.excluido)){
-    const first=DB.tecnicos.find(t=>!t.excluido);
-    if(first)first.papel="admin";
-    else DB.tecnicos.push({id:"tec-adm",nome:"Administrador",login:"admin",senha:hashSenha("admin"),papel:"admin"});
-  }
+  // garante SEMPRE uma conta administradora conhecida: admin / admin
+  let adm=DB.tecnicos.find(t=>(t.login||"").toLowerCase()==="admin");
+  if(adm){delete adm.excluido;adm.papel="admin";}
+  else DB.tecnicos.push({id:"tec-admin",nome:"Administrador",login:"admin",senha:hashSenha("admin"),papel:"admin"});
   // config padrão
   if(!DB.configs.length)DB.configs=[{id:"main",empresa:"Minha Empresa",equipLabel:"Equipamento",equipLabelPlural:"Equipamentos",setorLabel:"Setor atendido",osExterna:"Bling",medicoes:[]}];
 }
@@ -563,7 +562,10 @@ async function flushRemote(){
   SYNC={mode:ok?"ok":"err",ts:Date.now()};updateSync();
 }
 function posCargaRemota(){
+  const antesTec=JSON.stringify(DB.tecnicos),antesCfg=JSON.stringify(DB.configs);
   normalizeDB();persistLocal();SYNC={mode:"ok",ts:Date.now()};updateSync();
+  // se a migração criou/ajustou usuários ou config, sincroniza de volta
+  if(JSON.stringify(DB.tecnicos)!==antesTec||JSON.stringify(DB.configs)!==antesCfg)flushRemote();
   if(VIEWER.userId&&!DB.tecnicos.some(t=>t.id===VIEWER.userId&&!t.excluido)){delete VIEWER.userId;saveViewer();}
   renderNav();
   if(autenticado()){esconderLogin();router();}else{mostrarLogin();}
@@ -760,8 +762,12 @@ function mostrarLogin(){
   $("#loginErr").hidden=true;$("#loginPass").value="";
   $("#loginUser").value="";
   $("#loginTitle").textContent=CFG().empresa&&CFG().empresa!=="Minha Empresa"?CFG().empresa:"GeraCampo";
-  const temPadrao=DB.tecnicos.some(t=>t.login==="admin"&&t.senha===hashSenha("admin")&&!t.excluido);
-  $("#loginHint").hidden=!temPadrao;
+  const admPadrao=DB.tecnicos.some(t=>t.login==="admin"&&t.senha===hashSenha("admin")&&!t.excluido);
+  const logins=DB.tecnicos.filter(t=>!t.excluido).map(t=>t.login).join(", ");
+  $("#loginHint").innerHTML=admPadrao
+    ? `Não há tela de cadastro: use <b>admin</b> / senha <b>admin</b> e crie os usuários em Configurações.`
+    : `Não há tela de cadastro. Entre com um usuário existente (${esc(logins||"—")}) e sua senha. Sem acesso? Restaure a base de teste na tela anterior ou peça a senha ao administrador.`;
+  $("#loginHint").hidden=false;
   document.documentElement.setAttribute("data-hidden-app","");
   $("#login").hidden=false;
   setTimeout(()=>$("#loginUser").focus(),50);
