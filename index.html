@@ -46,6 +46,8 @@ button{font:inherit;cursor:pointer}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 .mono{font-family:var(--mono)}
 .tnum{font-variant-numeric:tabular-nums}
+.nowrap{white-space:nowrap}
+[hidden]{display:none!important}
 
 /* shell — mobile-first: app bar em cima, tab bar embaixo */
 .app{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh}
@@ -257,10 +259,19 @@ input[type=checkbox]{min-height:0}
 .repsign{margin-top:34px;display:flex;gap:40px;flex-wrap:wrap}
 .repsign div{flex:1;min-width:180px;border-top:1px solid var(--ink-2);padding-top:5px;font-size:11px;color:var(--ink-3);text-align:center}
 
+.loginwrap{position:fixed;inset:0;z-index:100;background:var(--ground);display:grid;place-items:center;padding:20px;padding-top:calc(20px + env(safe-area-inset-top))}
+.logincard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);width:100%;max-width:360px;padding:26px 22px;display:flex;flex-direction:column;gap:12px}
+.logincard .loginmark{width:46px;height:46px;border-radius:12px;background:linear-gradient(150deg,var(--accent),var(--accent-deep));display:grid;place-items:center;color:var(--on-accent);margin-bottom:2px}
+.logincard h1{font-size:20px}
+.logincard p{margin:0}
+.logincard label.f{margin-top:4px}
+.logincard #loginHint{margin-top:6px;line-height:1.5}
+:root[data-hidden-app] .app,:root[data-hidden-app] .tabbar{display:none!important}
+
 @media print{
   @page{margin:14mm}
   body{background:#fff}
-  .side,.topbar,.tabbar,.noprint{display:none!important}
+  .side,.topbar,.tabbar,.loginwrap,.noprint{display:none!important}
   .app{display:block}
   .wrap{padding:0!important}
   .wrap{padding:0;max-width:none}
@@ -283,7 +294,7 @@ input[type=checkbox]{min-height:0}
       <div><b>GeraCampo</b><span>Manutenção &amp; campo</span></div>
     </div>
     <nav class="nav" id="nav"></nav>
-    <div class="foot">Camada técnica · OS oficial no <b>Bling</b><br><span id="dbnote"></span></div>
+    <div class="foot"><span id="footco"></span><br><span id="dbnote"></span></div>
   </aside>
   <div class="main">
     <div class="topbar">
@@ -301,6 +312,21 @@ input[type=checkbox]{min-height:0}
     <div class="wrap" id="view"></div>
   </div>
   <nav class="tabbar" id="tabbar" aria-label="Navegação principal"></nav>
+</div>
+
+<div class="loginwrap" id="login" hidden>
+  <form class="logincard" id="loginform" autocomplete="on">
+    <div class="loginmark">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8Z"/></svg>
+    </div>
+    <h1 id="loginTitle">GeraCampo</h1>
+    <p class="muted small" id="loginSub">Entre com seu usuário</p>
+    <label class="f">Usuário<input id="loginUser" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+    <label class="f">Senha<input id="loginPass" type="password" autocomplete="current-password" required></label>
+    <div class="alertbox crit" id="loginErr" hidden></div>
+    <button class="btn primary" type="submit" style="width:100%">Entrar</button>
+    <p class="small muted" id="loginHint">Primeiro acesso: usuário <b>admin</b> · senha <b>admin</b> — troque depois em Configurações.</p>
+  </form>
 </div>
 
 <script>
@@ -335,13 +361,26 @@ function compressImg(file,cb){
   rd.readAsDataURL(file);
 }
 
-/* ---------- perfis / permissões ---------- */
-const PERFIS={
-  tecnico:{nome:"Técnico",pode:{consultar:1,criar:1,editar:"cond",excluir:0}},
-  supervisor:{nome:"Supervisor / Gestor",pode:{consultar:1,criar:1,editar:1,excluir:0}},
-  admin:{nome:"Administrador",pode:{consultar:1,criar:1,editar:1,excluir:1}}
+/* ---------- login / papéis / permissões ---------- */
+const PAPEIS={
+  admin:{nome:"Administrador",d:"Acesso total"},
+  tecnico:{nome:"Usuário (técnico)",d:"Cadastra, altera e exclui itens — não exclui OS nem equipamento/NS"}
 };
-const can=a=>!!(PERFIS[VIEWER.perfil]?.pode[a]);
+/* entidades que SÓ o administrador pode excluir */
+const SO_ADMIN_EXCLUI=["ordens","equipamentos"];
+/* hash simples de senha (ofusca no banco; não é criptografia forte) */
+function hashSenha(s){let h=5381;s=String(s||"");for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))>>>0;return "h1$"+h.toString(36);}
+function usuarioAtual(){return VIEWER.userId?byId("tecnicos",VIEWER.userId):null;}
+function papelAtual(){return usuarioAtual()?.papel||null;}
+function ehAdmin(){return papelAtual()==="admin";}
+const perfilNome=()=>PAPEIS[papelAtual()]?.nome||"—";
+function can(acao,entidade){
+  const p=papelAtual();
+  if(!p)return false;
+  if(p==="admin")return true;
+  if(acao==="excluir"&&SO_ADMIN_EXCLUI.includes(entidade))return false;
+  return ["consultar","criar","editar","excluir"].includes(acao);
+}
 
 /* ---------- seed ---------- */
 function seed(){
@@ -356,10 +395,16 @@ function seed(){
     {id:"ct-tensaomed",nome:"Tensão medida (V)",tipo:"numero",obrig:false}
   ];
   const tecnicos=[
-    {id:"tec-1",nome:"Rafael Nunes",perfil:"tecnico"},
-    {id:"tec-2",nome:"Diego Prado",perfil:"tecnico"},
-    {id:"tec-3",nome:"Marina Alves",perfil:"supervisor"}
+    {id:"tec-adm",nome:"Administrador",login:"admin",senha:hashSenha("admin"),papel:"admin"},
+    {id:"tec-1",nome:"Rafael Nunes",login:"rafael",senha:hashSenha("1234"),papel:"tecnico"},
+    {id:"tec-2",nome:"Diego Prado",login:"diego",senha:hashSenha("1234"),papel:"tecnico"},
+    {id:"tec-3",nome:"Marina Alves",login:"marina",senha:hashSenha("1234"),papel:"admin"}
   ];
+  const configs=[{id:"main",empresa:"Minha Empresa",
+    equipLabel:"Gerador",equipLabelPlural:"Geradores",
+    setorLabel:"Piscina / setor atendido",
+    osExterna:"Bling",
+    medicoes:["pH","Cloro livre","Salinidade","Temperatura"]}];
   const clientes=[
     {id:"cli-1",criadoEm:d(120),razao:"Academia Aqua Fit Ltda",fantasia:"Aqua Fit",doc:"12.345.678/0001-90",tel:"(41) 99999-1010",email:"contato@aquafit.com",endereco:"R. das Palmeiras, 200",cidade:"Curitiba/PR",contatos:"Sr. Aldo (gerente)",obs:"Piscina semiolímpica aquecida.",blingId:"BL-3021",relacao:"locacao_assistencia"},
     {id:"cli-2",criadoEm:d(90),razao:"Condomínio Res. Bosque Azul",fantasia:"Bosque Azul",doc:"98.765.432/0001-11",tel:"(41) 98888-2020",email:"sindico@bosqueazul.com",endereco:"Av. Central, 1500",cidade:"Pinhais/PR",contatos:"Síndica Rita",obs:"",blingId:"BL-3044",relacao:"locacao"},
@@ -420,28 +465,46 @@ function seed(){
     {id:"ab-1",criadoEm:d(7),posto:"Posto Trevo",dataHora:d(7),combustivel:"Gasolina",litros:38.2,valorTotal:229.20,precoLitro:6.00,docFiscal:"NFC-e 41250...8891",veiculoId:"vei-2",jornadaId:null}
   ];
   const auditoria=[];
-  return {schema:1,perfilAtual:"tecnico",tecnicoAtualId:"tec-1",camposTecnicos,tecnicos,clientes,equipamentos,veiculos,preventivas,produtos,ordens,manutencoes,solicitacoesPeca,jornadas,abastecimentos,auditoria};
+  return {schema:1,configs,camposTecnicos,tecnicos,clientes,equipamentos,veiculos,preventivas,produtos,ordens,manutencoes,solicitacoesPeca,jornadas,abastecimentos,auditoria};
 }
-/* quem está usando o app NESTE aparelho (vários técnicos podem revezar) */
+/* sessão de login NESTE aparelho */
 const VKEY="geracampo_viewer_v1";
 const VIEWER=(()=>{try{return JSON.parse(localStorage.getItem(VKEY))||{};}catch(e){return{};}})();
-const VIEWER_FRESH=!VIEWER.tecnicoId;
 function saveViewer(){try{localStorage.setItem(VKEY,JSON.stringify(VIEWER));}catch(e){}}
-const perfilNome=()=>PERFIS[VIEWER.perfil]?.nome||"—";
-const tecAtualNome=()=>byId("tecnicos",VIEWER.tecnicoId)?.nome||"—";
+const tecAtualNome=()=>usuarioAtual()?.nome||"—";
 const iniciais=n=>((String(n||"").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join(""))||"?").toUpperCase();
+const CFG=()=>DB.configs&&DB.configs[0]||{};
+const eqLabel=()=>CFG().equipLabel||"Equipamento";
+const eqLabelP=()=>CFG().equipLabelPlural||"Equipamentos";
+const setorLabel=()=>CFG().setorLabel||"Setor atendido";
 
-const COLS=["clientes","equipamentos","veiculos","preventivas","produtos","ordens","manutencoes","solicitacoesPeca","jornadas","abastecimentos","auditoria","camposTecnicos","tecnicos"];
-function normalizeDB(){if(!DB||typeof DB!=="object")DB=seed();COLS.forEach(k=>{if(!Array.isArray(DB[k]))DB[k]=[];});DB.schema=1;}
+const COLS=["configs","clientes","equipamentos","veiculos","preventivas","produtos","ordens","manutencoes","solicitacoesPeca","jornadas","abastecimentos","auditoria","camposTecnicos","tecnicos"];
+function normalizeDB(){
+  if(!DB||typeof DB!=="object")DB=seed();
+  COLS.forEach(k=>{if(!Array.isArray(DB[k]))DB[k]=[];});
+  DB.schema=1;
+  // migração: técnicos antigos -> usuários com login/senha/papel
+  const usados=new Set();
+  DB.tecnicos.forEach(t=>{
+    if(!t.papel)t.papel=(t.perfil==="admin"?"admin":"tecnico");
+    if(!t.login){let base=(t.nome||"user").trim().toLowerCase().split(/\s+/)[0].replace(/[^a-z0-9]/g,"")||"user";let l=base,n=2;while(usados.has(l)){l=base+n;n++;}t.login=l;}
+    usados.add(t.login);
+    if(!t.senha)t.senha=hashSenha("1234");
+  });
+  if(!DB.tecnicos.some(t=>t.papel==="admin"&&!t.excluido)){
+    const first=DB.tecnicos.find(t=>!t.excluido);
+    if(first)first.papel="admin";
+    else DB.tecnicos.push({id:"tec-adm",nome:"Administrador",login:"admin",senha:hashSenha("admin"),papel:"admin"});
+  }
+  // config padrão
+  if(!DB.configs.length)DB.configs=[{id:"main",empresa:"Minha Empresa",equipLabel:"Equipamento",equipLabelPlural:"Equipamentos",setorLabel:"Setor atendido",osExterna:"Bling",medicoes:[]}];
+}
 
 let DB;
 try{DB=JSON.parse(localStorage.getItem(KEY));}catch(e){DB=null;}
 if(!DB||DB.schema!==1)DB=seed();
 normalizeDB();
-VIEWER.tecnicoId=VIEWER.tecnicoId||DB.tecnicoAtualId||(DB.tecnicos[0]&&DB.tecnicos[0].id);
-if(!DB.tecnicos.some(t=>t.id===VIEWER.tecnicoId&&!t.excluido)){const t=DB.tecnicos.find(t=>!t.excluido);VIEWER.tecnicoId=t&&t.id;}
-VIEWER.perfil=VIEWER.perfil||(DB.tecnicos.find(t=>t.id===VIEWER.tecnicoId)||{}).perfil||DB.perfilAtual||"tecnico";
-saveViewer();
+if(VIEWER.userId&&!DB.tecnicos.some(t=>t.id===VIEWER.userId&&!t.excluido)){delete VIEWER.userId;saveViewer();}
 
 /* fotos ficam no dispositivo de quem tirou (não entram na base compartilhada) */
 const FKEY="geracampo_fotos_v1";
@@ -492,12 +555,18 @@ async function flushRemote(){
     if(body===lastSent[c])continue;
     if(body.length>900000){console.warn("Coleção "+c+" muito grande ("+body.length+" B) — mantida só localmente.");ok=false;continue;}
     try{
-      if(cloud)await cloud.collection("estado").doc(c).set({items:JSON.parse(body),updatedAt:Date.now(),by:perfilNome()});
-      else{const{error}=await supa.from("geracampo_estado").upsert({col:c,items:JSON.parse(body),updated_at:new Date().toISOString(),updated_by:perfilNome()});if(error)throw error;}
+      if(cloud)await cloud.collection("estado").doc(c).set({items:JSON.parse(body),updatedAt:Date.now(),by:tecAtualNome()});
+      else{const{error}=await supa.from("geracampo_estado").upsert({col:c,items:JSON.parse(body),updated_at:new Date().toISOString(),updated_by:tecAtualNome()});if(error)throw error;}
       lastSent[c]=body;
     }catch(e){ok=false;dirty.add(c);}
   }
   SYNC={mode:ok?"ok":"err",ts:Date.now()};updateSync();
+}
+function posCargaRemota(){
+  normalizeDB();persistLocal();SYNC={mode:"ok",ts:Date.now()};updateSync();
+  if(VIEWER.userId&&!DB.tecnicos.some(t=>t.id===VIEWER.userId&&!t.excluido)){delete VIEWER.userId;saveViewer();}
+  renderNav();
+  if(autenticado()){esconderLogin();router();}else{mostrarLogin();}
 }
 function aplicarRemoto(c,items,by){
   const body=JSON.stringify(items||[]);
@@ -505,10 +574,11 @@ function aplicarRemoto(c,items,by){
   if(Date.now()-lastLocalWrite<1800)return;
   lastSent[c]=body;DB[c]=items||[];normalizeDB();persistLocal();
   SYNC={mode:"ok",ts:Date.now()};updateSync();
+  if(!autenticado()){if($("#login").hidden)mostrarLogin();return;}
   if(document.getElementById("modalbg"))return;
   const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return;
-  router();
-  if(by&&by!==perfilNome())toast("Dados atualizados · "+by);
+  renderNav();router();
+  if(by&&by!==tecAtualNome())toast("Dados atualizados · "+by);
 }
 function loadSupaLib(){
   return new Promise(res=>{
@@ -528,7 +598,7 @@ async function initSupabase(cfg){
     if(error)throw error;
     if(data&&data.length){
       data.forEach(r=>{if(COLS.includes(r.col)){DB[r.col]=r.items||[];lastSent[r.col]=JSON.stringify(r.items||[]);}});
-      normalizeDB();persistLocal();SYNC={mode:"ok",ts:Date.now()};router();
+      posCargaRemota();
     }else{SYNC={mode:"ok",ts:Date.now()};await flushRemote();}
     updateSync();
     supa.channel("geracampo-estado")
@@ -547,7 +617,7 @@ async function initDbCapability(){
     const snaps=await Promise.all(COLS.map(c=>cloud.collection("estado").doc(c).get().catch(()=>null)));
     if(snaps.some(s=>s&&s.exists)){
       snaps.forEach((s,i)=>{const c=COLS[i];if(s&&s.exists){const items=(s.data()||{}).items||[];DB[c]=items;lastSent[c]=JSON.stringify(items);}});
-      normalizeDB();persistLocal();SYNC={mode:"ok",ts:Date.now()};router();
+      posCargaRemota();
     }else{await flushRemote();}
     updateSync();
     COLS.forEach(c=>cloud.collection("estado").doc(c).onSnapshot(s=>{
@@ -562,7 +632,8 @@ async function initRemote(){
   if(await initDbCapability())return;
   SYNC.mode="local";updateSync();
 }
-function audit(acao,entidade,id,detalhe){DB.auditoria.unshift({id:uid("aud"),ts:nowISO(),usuario:perfilNome(),acao,entidade,entidadeId:id||"",detalhe:detalhe||""});persist();}
+const auditUser=()=>(usuarioAtual()?usuarioAtual().nome+" ("+perfilNome()+")":perfilNome());
+function audit(acao,entidade,id,detalhe){DB.auditoria.unshift({id:uid("aud"),ts:nowISO(),usuario:auditUser(),acao,entidade,entidadeId:id||"",detalhe:detalhe||""});persist();}
 
 /* ---------- helpers de domínio ---------- */
 const byId=(arr,id)=>DB[arr].find(x=>x.id===id);
@@ -580,7 +651,7 @@ const PROX_ACOES={nenhuma:"Nenhuma",retorno:"Retorno",preventiva:"Preventiva",mo
 
 function tipoAtendPill(t){const c=t==="locacao"?"accent":t==="garantia"?"info":t==="assistencia"?"warn":t==="cortesia"?"good":"";return `<span class="pill ${c}">${esc(TIPOS_ATEND[t]||"—")}</span>`;}
 function osStatusPill(s){const m={aberta:["warn","Aberta"],em_atendimento:["info","Em atendimento"],aguardando_peca:["crit","Aguardando peça"],aguardando_retorno:["warn","Aguardando retorno"],encerrada:["good","Encerrada"]};const x=m[s]||["","—"];return `<span class="pill ${x[0]}"><span class="dot"></span>${x[1]}</span>`;}
-function jornadaAberta(){return DB.jornadas.find(j=>j.status==="aberta"&&j.tecnicoId===VIEWER.tecnicoId&&ativo(j));}
+function jornadaAberta(){return DB.jornadas.find(j=>j.status==="aberta"&&j.tecnicoId===VIEWER.userId&&ativo(j));}
 
 function preventivaStatus(pv){
   const v=byId("veiculos",pv.veiculoId);if(!v)return{label:"—",cls:""};
@@ -607,7 +678,8 @@ function ind(){
 }
 
 /* ---------- navegação ---------- */
-const NAV=[
+const navEquip=()=>eqLabelP()+" / NS";
+const NAV=()=>[
   {g:"Operação"},
   {r:"painel",t:"Painel",i:"grid"},
   {r:"jornada",t:"Jornada",i:"route"},
@@ -615,7 +687,7 @@ const NAV=[
   {r:"manutencoes",t:"Manutenções",i:"wrench"},
   {g:"Cadastros"},
   {r:"clientes",t:"Clientes",i:"users"},
-  {r:"equipamentos",t:"Equipamentos / NS",i:"cpu"},
+  {r:"equipamentos",t:navEquip(),i:"cpu"},
   {r:"veiculos",t:"Veículos",i:"truck"},
   {r:"estoque",t:"Peças & estoque",i:"box"},
   {r:"abastecimento",t:"Abastecimento",i:"fuel"},
@@ -653,52 +725,91 @@ const TABS=[
 ];
 const TABROUTES=TABS.map(t=>t.r);
 /* itens da tela "Mais" */
-const MAIS=[
+const MAIS=()=>[
   {r:"clientes",t:"Clientes",i:"users",d:"Cadastro e histórico"},
-  {r:"equipamentos",t:"Equipamentos / NS",i:"cpu",d:"Prontuário por número de série"},
+  {r:"equipamentos",t:navEquip(),i:"cpu",d:"Prontuário por número de série"},
   {r:"veiculos",t:"Veículos",i:"truck",d:"Frota e preventivas"},
   {r:"estoque",t:"Peças & estoque",i:"box",d:"Produtos e solicitações"},
   {r:"abastecimento",t:"Abastecimento",i:"fuel",d:"Registro e QR Code"},
   {r:"indicadores",t:"Indicadores",i:"chart",d:"Painel gerencial"},
   {r:"relatorios",t:"Relatórios",i:"report",d:"PDF e CSV"},
   {r:"fluxo",t:"Fluxo macro",i:"flow",d:"Visão de ponta a ponta"},
-  {r:"config",t:"Configurações",i:"sliders",d:"Campos, conexão, base"},
+  {r:"config",t:"Configurações",i:"sliders",d:"Itens, usuários, conexão"},
   {r:"auditoria",t:"Auditoria",i:"shield",d:"Trilha e exclusões"}
 ];
 const svgIc=(name,cls)=>`<svg class="${cls||"ic"}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||""}</svg>`;
 function renderNav(){
-  $("#nav").innerHTML=NAV.map(n=>n.g?`<div class="grp">${n.g}</div>`:
-    `<a href="#/${n.r}" data-r="${n.r}">${svgIc(n.i)}${n.t}</a>`).join("");
+  $("#nav").innerHTML=NAV().map(n=>n.g?`<div class="grp">${n.g}</div>`:
+    `<a href="#/${n.r}" data-r="${n.r}">${svgIc(n.i)}${esc(n.t)}</a>`).join("");
 }
 function renderTabs(){
   $("#tabbar").innerHTML=TABS.map(t=>`<a href="#/${t.r}" data-tab="${t.r}">${svgIc(t.i)}${t.t}</a>`).join("");
 }
-function renderRole(){ // mantém o nome; agora atualiza o "chip" de técnico
-  const nome=tecAtualNome();
+function renderRole(){ // atualiza o chip do usuário logado + identidade
+  const u=usuarioAtual();const nome=u?u.nome:"—";
   $("#uav").textContent=iniciais(nome);
   $("#uname").textContent=(nome.split(/\s+/)[0]||"—");
   $("#userbtn").title=nome+" · "+perfilNome();
+  const co=$("#footco");if(co)co.textContent=(CFG().empresa||"GeraCampo")+(CFG().osExterna?" · OS no "+CFG().osExterna:"");
+  const bt=document.querySelector(".brand span");if(bt&&CFG().empresa&&CFG().empresa!=="Minha Empresa")bt.textContent=CFG().empresa;
   updateSync();
 }
-function trocarTecnico(){
-  const lista=DB.tecnicos.filter(ativo);
-  modal({title:"Quem está usando o app?",body:`
-    <p class="small muted" style="margin:0 0 12px">Toque no seu nome. A jornada, os atendimentos e o histórico ficam vinculados a você. Vários técnicos podem revezar neste mesmo aparelho — é só voltar aqui e trocar.</p>
-    <div class="list" style="border:1px solid var(--line);border-radius:var(--radius);overflow:hidden">
-    ${lista.map(t=>`<button class="item" data-pick="${t.id}" style="width:100%;background:${t.id===VIEWER.tecnicoId?'var(--accent-soft)':'none'};border:0;text-align:left">
-      <span class="avatar">${esc(iniciais(t.nome))}</span>
-      <div><div class="t">${esc(t.nome)}</div><div class="d">${esc(PERFIS[t.perfil]?.nome||t.perfil)}</div></div>
-      <span class="sp"></span>${t.id===VIEWER.tecnicoId?'<span class="pill accent">você</span>':'<span class="small muted">entrar</span>'}
-    </button>`).join("")}
+/* ---------- login ---------- */
+function autenticado(){return !!usuarioAtual();}
+function mostrarLogin(){
+  $("#loginErr").hidden=true;$("#loginPass").value="";
+  $("#loginUser").value="";
+  $("#loginTitle").textContent=CFG().empresa&&CFG().empresa!=="Minha Empresa"?CFG().empresa:"GeraCampo";
+  const temPadrao=DB.tecnicos.some(t=>t.login==="admin"&&t.senha===hashSenha("admin")&&!t.excluido);
+  $("#loginHint").hidden=!temPadrao;
+  document.documentElement.setAttribute("data-hidden-app","");
+  $("#login").hidden=false;
+  setTimeout(()=>$("#loginUser").focus(),50);
+}
+function esconderLogin(){$("#login").hidden=true;document.documentElement.removeAttribute("data-hidden-app");}
+function fazerLogin(){
+  const l=$("#loginUser").value.trim().toLowerCase();
+  const s=$("#loginPass").value;
+  const u=DB.tecnicos.find(t=>!t.excluido&&(t.login||"").toLowerCase()===l);
+  if(!u||u.senha!==hashSenha(s)){$("#loginErr").textContent="Usuário ou senha incorretos.";$("#loginErr").hidden=false;return;}
+  VIEWER.userId=u.id;saveViewer();
+  esconderLogin();
+  renderNav();renderRole();
+  location.hash="#/painel";router();
+  toast("Bem-vindo, "+u.nome.split(/\s+/)[0]+".");
+}
+function logout(){
+  audit("Logout","Sessão",VIEWER.userId||"","");
+  delete VIEWER.userId;saveViewer();
+  closeModal();
+  mostrarLogin();
+}
+function contaSheet(){
+  const u=usuarioAtual();
+  modal({title:"Conta",body:`
+    <div class="item" style="border:1px solid var(--line);border-radius:var(--radius);min-height:0;padding:12px;margin-bottom:12px">
+      <span class="avatar">${esc(iniciais(u?.nome))}</span>
+      <div><div class="t">${esc(u?.nome||"—")}</div><div class="d">${esc(perfilNome())} · usuário <b>${esc(u?.login||"")}</b></div></div>
     </div>
-    <button class="btn" id="addTecPick" style="width:100%;margin-top:10px">+ Cadastrar técnico</button>`,
+    ${jornadaAberta()?`<div class="alertbox" style="margin-bottom:12px"><span>▶</span><div>Você tem uma jornada aberta. Encerre antes de sair, se for troca de turno.</div></div>`:""}
+    <button class="btn" id="cSenha" style="width:100%;margin-bottom:8px">Alterar minha senha</button>
+    <button class="btn danger" id="cSair" style="width:100%">Sair (trocar de usuário)</button>`,
     footer:`<button class="btn" onclick="closeModal()">Fechar</button>`});
-  document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{
-    const t=byId("tecnicos",b.dataset.pick);if(!t)return;
-    VIEWER.tecnicoId=t.id;VIEWER.perfil=t.perfil||"tecnico";saveViewer();
-    renderRole();closeModal();toast("Agora usando como "+t.nome);router();
-  });
-  $("#addTecPick").onclick=()=>{closeModal();tecnicoModal(null);};
+  $("#cSair").onclick=logout;
+  $("#cSenha").onclick=()=>{closeModal();trocarSenha(u);};
+}
+function trocarSenha(u){
+  modal({title:"Alterar senha",body:`<div class="stack">
+    <label class="f">Senha atual<input id="s0" type="password"></label>
+    <label class="f">Nova senha<input id="s1" type="password"></label>
+    <label class="f">Repetir nova senha<input id="s2" type="password"></label>
+  </div>`,footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="sok">Salvar</button>`});
+  $("#sok").onclick=()=>{
+    if(u.senha!==hashSenha($("#s0").value))return toast("Senha atual incorreta.");
+    const n=$("#s1").value;if(n.length<4)return toast("Use ao menos 4 caracteres.");
+    if(n!==$("#s2").value)return toast("As senhas não conferem.");
+    u.senha=hashSenha(n);audit("Senha","Usuário",u.id,"alteração de senha");persist();closeModal();toast("Senha alterada.");
+  };
 }
 
 /* ---------- modal ---------- */
@@ -714,10 +825,9 @@ function modal({title,body,footer,wide}){
 function closeModal(){$("#modalbg")?.remove();}
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
 
-/* ---------- exclusão (admin, com auditoria) ---------- */
-function excluir(arr,id,label,after,nivel){
-  nivel=nivel||"excluir";
-  if(!can(nivel)){toast("Sem permissão para excluir "+label.toLowerCase()+".");return;}
+/* ---------- exclusão (soft delete + auditoria) ---------- */
+function excluir(arr,id,label,after){
+  if(!can("excluir",arr)){toast(SO_ADMIN_EXCLUI.includes(arr)?"Somente o administrador pode excluir "+label.toLowerCase()+".":"Sem permissão para excluir.");return;}
   const wrapId=uid("mot");
   modal({title:"Excluir "+label,body:`
     <p class="small muted">A exclusão é lógica (soft delete). O registro sai das listas mas continua na auditoria e pode ser restaurado.</p>
@@ -727,7 +837,7 @@ function excluir(arr,id,label,after,nivel){
   $("#cfx").onclick=()=>{
     const motivo=$("#"+wrapId).value.trim();
     if(!motivo){toast("Informe o motivo.");return;}
-    const reg=byId(arr,id);reg.excluido={ts:nowISO(),usuario:perfilNome(),motivo};
+    const reg=byId(arr,id);reg.excluido={ts:nowISO(),usuario:auditUser(),motivo};
     audit("Exclusão",label,id,motivo);persist();closeModal();toast(label+" excluído.");after&&after();
   };
 }
@@ -744,7 +854,7 @@ function router(){
   const inDetalhe=rest.length>0&&rest[0]!=="novo";
   $("#app").classList.toggle("hasback",inDetalhe||(!TABROUTES.includes(r)&&r!=="mais"&&!!ROUTES[r]));
   const fn=ROUTES[r]||ROUTES.painel;
-  $("#crumb").textContent=crumbMap[r]||"Painel";
+  $("#crumb").textContent=r==="equipamentos"?navEquip():(crumbMap[r]||"Painel");
   $("#view").innerHTML="";
   try{fn($("#view"),rest);}catch(e){$("#view").innerHTML=`<div class="alertbox crit">Erro ao renderizar: ${esc(e.message)}</div>`;console.error(e);}
   window.scrollTo(0,0);
@@ -754,28 +864,24 @@ window.addEventListener("hashchange",router);
 /* ============ MAIS (menu do celular) ============ */
 ROUTES.mais=(v)=>{
   const standalone=window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone;
+  const u=usuarioAtual();
   v.innerHTML=`<div class="pagehead"><h1>Mais</h1><p>Cadastros e gestão. As quatro ações do dia a dia ficam na barra de baixo.</p></div>
   <div class="maisgrid" style="margin-bottom:16px">
-    ${MAIS.map(m=>`<a class="maistile" href="#/${m.r}">${svgIc(m.i)}<b>${esc(m.t)}</b><span>${esc(m.d)}</span></a>`).join("")}
+    ${MAIS().map(m=>`<a class="maistile" href="#/${m.r}">${svgIc(m.i)}<b>${esc(m.t)}</b><span>${esc(m.d)}</span></a>`).join("")}
   </div>
   <div class="card pad" style="margin-bottom:14px">
-    <h3 style="margin-bottom:10px">Quem está usando este aparelho</h3>
+    <h3 style="margin-bottom:10px">Você</h3>
     <div class="item" style="border:1px solid var(--line);border-radius:var(--radius);min-height:0;padding:12px">
-      <span class="avatar">${esc(iniciais(tecAtualNome()))}</span>
-      <div><div class="t">${esc(tecAtualNome())}</div><div class="d">${esc(perfilNome())}</div></div>
+      <span class="avatar">${esc(iniciais(u?.nome))}</span>
+      <div><div class="t">${esc(u?.nome||"—")}</div><div class="d">${esc(perfilNome())} · login <b>${esc(u?.login||"")}</b></div></div>
       <span class="sp"></span>
-      <button class="btn sm" id="mtrocar">Trocar</button>
+      <button class="btn sm" id="mconta">Conta</button>
     </div>
-    <details style="margin-top:10px">
-      <summary class="small muted" style="cursor:pointer">Ajustar nível de acesso manualmente</summary>
-      <label class="f" style="margin-top:8px">Nível de acesso<select id="mperfil">${Object.entries(PERFIS).map(([k,x])=>`<option value="${k}"${k===VIEWER.perfil?" selected":""}>${x.nome}</option>`).join("")}</select></label>
-      <p class="small muted" style="margin:6px 0 0">Normalmente o nível vem do cadastro do técnico. Só mude aqui em casos especiais.</p>
-    </details>
-    <p class="small muted" style="margin:10px 0 0">Vários técnicos podem revezar neste aparelho — toque no seu nome no topo da tela a qualquer momento para trocar. A escolha é local, não sincroniza.</p>
+    <button class="btn danger" id="msair" style="width:100%;margin-top:10px">Sair (trocar de usuário)</button>
   </div>
   ${!standalone?`<div class="alertbox info"><span>📲</span><div>Para usar como aplicativo: no navegador do celular toque em <b>Compartilhar / ⋮</b> → <b>Adicionar à tela inicial</b>.</div></div>`:""}`;
-  v.querySelector("#mtrocar").onclick=()=>trocarTecnico();
-  v.querySelector("#mperfil").onchange=e=>{VIEWER.perfil=e.target.value;saveViewer();toast("Nível: "+PERFIS[e.target.value].nome);renderRole();router();};
+  v.querySelector("#mconta").onclick=()=>contaSheet();
+  v.querySelector("#msair").onclick=()=>logout();
 };
 
 /* ============ PAINEL ============ */
@@ -783,7 +889,7 @@ ROUTES.painel=v=>{
   const i=ind();const j=jornadaAberta();
   v.innerHTML=`
   <div class="pagehead"><h1>Painel operacional</h1>
-    <p>Visão do dia. A ordem de serviço oficial vive no Bling; aqui fica a camada técnica — jornada, atendimento, histórico e estoque de campo.</p></div>
+    <p>Olá, ${esc((usuarioAtual()?.nome||"").split(/\s+/)[0]||"")}. Visão do dia: jornada, atendimento, histórico e estoque de campo.</p></div>
   ${j?`<div class="alertbox info" style="margin-bottom:16px"><span>▶</span><div>Jornada em andamento desde ${fmtTime(j.criadoEm||j.criadaEm)} · ${veiNome(j.veiculoId)} — <a href="#/jornada">abrir jornada</a></div></div>`:
     `<div class="alertbox" style="margin-bottom:16px"><span>◔</span><div>Nenhuma jornada aberta. <a href="#/jornada">Iniciar jornada</a> para registrar deslocamentos e atendimentos.</div></div>`}
   <div class="kpis" style="margin-bottom:20px">
@@ -943,7 +1049,7 @@ ROUTES.equipamentos=(v,rest)=>{
       <div><div class="t mono">${esc(e.ns)}</div><div class="d">${esc(e.modelo)} · ${esc(cliNome(e.clienteId))} · vínculo ${esc(e.vinculo)}</div></div>
       <span class="sp"></span>${e.classAtend?tipoAtendPill(e.classAtend):""}<span class="pill ${e.status==="Ativo"?"good":e.status==="Retirado"||e.status==="Descartado"?"crit":""}">${esc(e.status)}</span></a>`).join("")||'<div class="emptyst">Nenhum equipamento.</div>';
   };
-  v.innerHTML=`<div class="pagehead between"><div><h1>Equipamentos / NS</h1><p>O número de série é a identidade permanente do equipamento. Cadastro único; histórico acompanha o NS mesmo em troca de cliente.</p></div>
+  v.innerHTML=`<div class="pagehead between"><div><h1>${esc(navEquip())}</h1><p>O número de série (NS) é a identidade permanente do ${esc(eqLabel().toLowerCase())}. Cadastro único; o histórico acompanha o NS mesmo em troca de cliente.</p></div>
     ${can("criar")?`<a class="btn primary" href="#/equipamentos/novo">+ Cadastrar NS</a>`:""}</div>
   <div class="row" style="margin-bottom:12px"><div class="searchbar"><span class="ic">⌕</span><input id="q" placeholder="Buscar por NS, modelo, cliente…"></div></div>
   <div class="chips" style="margin-bottom:14px"><button class="chip on" data-s="">Todos</button>${STATUS_EQUIP.map(s=>`<button class="chip" data-s="${s}">${s}</button>`).join("")}</div>
@@ -963,7 +1069,7 @@ function equipDetalhe(v,id){
     <div class="actionbar">
       ${can("editar")?`<button class="btn sm" id="edit">Editar</button>`:""}
       ${can("editar")?`<button class="btn sm" id="transf">Transferir cliente</button><button class="btn sm" id="subst">Substituir</button>`:""}
-      ${can("excluir")?`<button class="btn sm danger" id="del">Excluir</button>`:""}
+      ${can("excluir","equipamentos")?`<button class="btn sm danger" id="del">Excluir</button>`:""}
     </div></div>
   <div class="pagehead"><h1 class="mono">${esc(e.ns)}</h1>
     <p>${esc(e.modelo)} · ${esc(e.fabricante)} · <span class="pill ${e.status==="Ativo"?"good":"crit"}">${esc(e.status)}</span> ${e.classAtend?tipoAtendPill(e.classAtend):""}</p></div>
@@ -1013,7 +1119,7 @@ function equipDetalhe(v,id){
   can("editar")&&(v.querySelector("#edit").onclick=()=>equipForm(v,e));
   can("editar")&&(v.querySelector("#transf").onclick=()=>transferirEquip(e));
   can("editar")&&(v.querySelector("#subst").onclick=()=>substituirEquip(e));
-  can("excluir")&&(v.querySelector("#del").onclick=()=>excluir("equipamentos",id,"Equipamento",()=>location.hash="#/equipamentos"));
+  can("excluir","equipamentos")&&(v.querySelector("#del").onclick=()=>excluir("equipamentos",id,eqLabel(),()=>location.hash="#/equipamentos"));
 }
 function transferirEquip(e){
   modal({title:"Transferir equipamento de cliente",body:`
@@ -1054,7 +1160,7 @@ function substituirEquip(e){
 function equipForm(v,e){
   const x=e||{camposValores:{}};
   v.innerHTML=`<a class="btn ghost sm" href="#/equipamentos">← Cancelar</a>
-  <div class="pagehead"><h1>${e?"Editar equipamento":"Cadastrar NS"}</h1><p>Cadastro único. Características permanentes ficam aqui; o técnico não repete isso a cada visita.</p></div>
+  <div class="pagehead"><h1>${e?"Editar "+esc(eqLabel().toLowerCase()):"Cadastrar "+esc(eqLabel())}</h1><p>Cadastro único. Características permanentes ficam aqui; o técnico não repete isso a cada visita.</p></div>
   <div class="card pad"><div class="formgrid">
     <label class="f">NS (número de série) <span class="rq">*</span><input id="ns" class="mono" value="${esc(x.ns||"")}"${e?" ":""}></label>
     <label class="f">Modelo<input id="modelo" value="${esc(x.modelo||"")}"></label>
@@ -1067,7 +1173,7 @@ function equipForm(v,e){
     <label class="f">Classificação de atendimento<select id="classAtend"><option value="">—</option>${Object.entries(TIPOS_ATEND).map(([k,val])=>`<option value="${k}"${x.classAtend===k?" selected":""}>${val}</option>`).join("")}</select></label>
     <label class="f">Local de instalação<input id="local" value="${esc(x.local||"")}"></label>
     <label class="f">Endereço / localização<input id="endereco" value="${esc(x.endereco||"")}"></label>
-    <label class="f">Piscina / setor atendido<input id="setor" value="${esc(x.setor||"")}"></label>
+    <label class="f">${esc(setorLabel())}<input id="setor" value="${esc(x.setor||"")}"></label>
     <label class="f full">Observações de instalação<textarea id="obsInstal">${esc(x.obsInstal||"")}</textarea></label>
   </div>
   <h3 style="margin:18px 0 4px">Características técnicas</h3>
@@ -1148,9 +1254,14 @@ function osDetalhe(v,id){
   const mnt=DB.manutencoes.find(m=>ativo(m)&&m.osId===id);
   const eqsCli=DB.equipamentos.filter(e=>ativo(e)&&e.clienteId===o.clienteId);
   const j=jornadaAberta();
+  const osExt=CFG().osExterna||"";
   v.innerHTML=`<a class="btn ghost sm" href="#/os">← Ordens de Serviço</a>
-  <div class="pagehead between"><div><h1>${esc(o.numeroBling)}</h1><p>${esc(cliNome(o.clienteId))} · aberta ${fmtDate(o.criadaEm)} · ${osStatusPill(o.status)}</p></div></div>
-  <div class="alertbox info" style="margin-bottom:16px"><span>ℹ</span><div>${o.origem==="manual"||o.origem==="exemplo"?`OS cadastrada manualmente (sem integração Bling). O número <b>${esc(o.numeroBling)}</b> é apenas referência; quando o Bling for ligado, basta usar o número real.`:`OS oficial no Bling. O app não cria uma segunda OS — apenas relaciona o histórico técnico a <b>${esc(o.numeroBling)}</b>.`}</div></div>
+  <div class="pagehead between"><div><h1>${esc(o.numeroBling)}</h1><p>${esc(cliNome(o.clienteId))} · aberta ${fmtDate(o.criadaEm)} · ${osStatusPill(o.status)}</p></div>
+    <div class="actionbar">
+      ${can("editar")?`<button class="btn sm" id="edos">Editar</button>`:""}
+      ${can("excluir","ordens")?`<button class="btn sm danger" id="delos">Excluir</button>`:""}
+    </div></div>
+  <div class="alertbox info" style="margin-bottom:16px"><span>ℹ</span><div>${o.origem==="manual"||o.origem==="exemplo"?`OS cadastrada manualmente${osExt?" (sem integração "+esc(osExt)+")":""}. O número <b>${esc(o.numeroBling)}</b> é apenas referência.`:`OS oficial${osExt?" no "+esc(osExt):" no sistema externo"}. O app não cria uma segunda OS — apenas relaciona o histórico técnico a <b>${esc(o.numeroBling)}</b>.`}</div></div>
   <div class="detailgrid two">
     <div class="stack">
       <div class="panel"><div class="ph"><h3>Vínculo técnico</h3></div><div class="pb" style="padding:16px">
@@ -1201,11 +1312,29 @@ function osDetalhe(v,id){
     if(!v.querySelector("#ta").value)return toast("Confirme o tipo de atendimento.");
     if(!j)return toast("Inicie a jornada primeiro.");
     o.equipamentoId=eqSel.value;o.tipoAtendimento=v.querySelector("#ta").value;o.situacaoCobranca=v.querySelector("#sc").value;o.status="em_atendimento";
-    const m={id:uid("mnt"),criadaEm:nowISO(),osId:o.id,numeroBlingRef:o.numeroBling,clienteId:o.clienteId,equipamentoId:o.equipamentoId,tecnicoId:VIEWER.tecnicoId,veiculoId:j.veiculoId,jornadaId:j.id,tipoAtendimento:o.tipoAtendimento,problema:o.descricao||"",diagnostico:"",servico:"",testes:{},medicoes:{},pecas:[],fotos:[],obs:"",finalizacao:"",proximaAcao:"nenhuma",proximaData:null,status:"aberta",horaInicio:nowISO()};
+    const m={id:uid("mnt"),criadaEm:nowISO(),osId:o.id,numeroBlingRef:o.numeroBling,clienteId:o.clienteId,equipamentoId:o.equipamentoId,tecnicoId:j.tecnicoId||VIEWER.userId,veiculoId:j.veiculoId,jornadaId:j.id,tipoAtendimento:o.tipoAtendimento,problema:o.descricao||"",diagnostico:"",servico:"",testes:{},medicoes:{},pecas:[],fotos:[],obs:"",finalizacao:"",proximaAcao:"nenhuma",proximaData:null,status:"aberta",horaInicio:nowISO()};
     DB.manutencoes.unshift(m);
     j.eventos=j.eventos||[];j.eventos.push({tipo:"atend_inicio",ts:nowISO(),ref:o.numeroBling});
     audit("Criação","Manutenção",m.id,"OS "+o.numeroBling);persist();location.hash="#/manutencoes/"+m.id;
   });
+  v.querySelector("#edos")&&(v.querySelector("#edos").onclick=()=>osForm(o));
+  v.querySelector("#delos")&&(v.querySelector("#delos").onclick=()=>excluir("ordens",id,"Ordem de Serviço",()=>location.hash="#/os"));
+}
+function osForm(o){
+  modal({title:"Editar OS",body:`<div class="formgrid">
+    <label class="f">Número da OS<input id="on" class="mono" value="${esc(o.numeroBling)}"></label>
+    <label class="f">Data de abertura<input id="od" type="date" value="${esc((o.criadaEm||"").slice(0,10))}"></label>
+    <label class="f full">Cliente<select id="oc">${DB.clientes.filter(ativo).map(c=>`<option value="${c.id}"${o.clienteId===c.id?" selected":""}>${esc(c.fantasia||c.razao)}</option>`).join("")}</select></label>
+    <label class="f full">Descrição / problema<textarea id="odsc">${esc(o.descricao||"")}</textarea></label>
+    <label class="f full">Situação da cobrança<select id="osc2">${SIT_COBRANCA.map(s=>`<option${o.situacaoCobranca===s?" selected":""}>${s}</option>`).join("")}</select></label>
+  </div>`,footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="oksavos">Salvar</button>`});
+  $("#oksavos").onclick=()=>{
+    const num=$("#on").value.trim();if(!num)return toast("Informe o número.");
+    if(DB.ordens.some(x=>x.id!==o.id&&ativo(x)&&x.numeroBling.toLowerCase()===num.toLowerCase()))return toast("Já existe OS com esse número.");
+    o.numeroBling=num;o.clienteId=$("#oc").value;o.descricao=$("#odsc").value.trim();o.situacaoCobranca=$("#osc2").value;
+    if($("#od").value)o.criadaEm=new Date($("#od").value+"T09:00:00").toISOString();
+    audit("Edição","OS",o.id);persist();closeModal();toast("OS salva.");router();
+  };
 }
 
 /* ============ MANUTENÇÕES ============ */
@@ -1283,12 +1412,14 @@ function mntDetalhe(v,id){
   const eq=byId("equipamentos",m.equipamentoId);
   const readonly=!editavel;
   const camposTeste=DB.camposTecnicos.filter(ativo);
-  const medDefs=["ph","cloro","salinidade","temperatura"];
-  v.innerHTML=`<a class="btn ghost sm" href="#/manutencoes">← Manutenções</a>
-  <div class="pagehead between"><div><h1>Registro de manutenção</h1>
+  const medDefs=(CFG().medicoes||[]);
+  v.innerHTML=`<div class="between" style="margin-bottom:6px"><a class="btn ghost sm" href="#/manutencoes">← Manutenções</a>
+    <div class="actionbar">
+      ${m.status==="encerrada"?`<span class="pill good">Encerrada · ${esc(m.finalizacao)}</span>`:`<span class="pill warn">Em atendimento</span>`}
+      ${can("excluir","manutencoes")?`<button class="btn sm danger" id="delmnt">Excluir</button>`:""}
+    </div></div>
+  <div class="pagehead"><h1>Registro de manutenção</h1>
     <p>${esc(eqNome(m.equipamentoId))} · ${esc(cliNome(m.clienteId))} · OS <span class="mono">${esc(m.numeroBlingRef||"—")}</span> · ${esc(tecNome(m.tecnicoId))}</p></div>
-    <div>${m.status==="encerrada"?`<span class="pill good">Encerrada · ${esc(m.finalizacao)}</span>`:`<span class="pill warn">Em atendimento</span>`}</div></div>
-  ${readonly&&m.status!=="encerrada"?`<div class="alertbox" style="margin-bottom:14px"><span>!</span><div>Seu perfil não pode editar este registro.</div></div>`:""}
   <div class="detailgrid two">
     <div class="stack">
       <div class="card pad">
@@ -1307,10 +1438,10 @@ function mntDetalhe(v,id){
         </div>
         <div id="testesExtra"></div>
         ${!readonly?`<button class="btn sm" id="addTeste" style="margin-top:10px">+ Adicionar teste</button>`:""}
-        <h3 style="margin:18px 0 8px">Medições</h3>
+        ${medDefs.length||Object.keys(m.medicoes||{}).length?`<h3 style="margin:18px 0 8px">Medições</h3>
         <div class="formgrid" id="medicoes">
-          ${medDefs.map(k=>`<label class="f" style="text-transform:capitalize">${k}<input data-m="${k}" ${readonly?"disabled":""} value="${esc(m.medicoes?.[k]||"")}"></label>`).join("")}
-        </div>
+          ${[...new Set([...medDefs,...Object.keys(m.medicoes||{})])].map(k=>`<label class="f">${esc(k)}<input data-m="${esc(k)}" ${readonly?"disabled":""} value="${esc(m.medicoes?.[k]||"")}"></label>`).join("")}
+        </div>`:""}
       </div>
       <div class="card pad">
         <div class="between"><h3>Peças / materiais</h3>${!readonly?`<button class="btn sm" id="addPeca">+ Peça</button>`:""}</div>
@@ -1438,6 +1569,7 @@ function mntDetalhe(v,id){
   }
   v.querySelector("#reabrir")&&(v.querySelector("#reabrir").onclick=()=>{m.status="aberta";const o=byId("ordens",m.osId);if(o)o.status="em_atendimento";audit("Reabertura","Manutenção",m.id);persist();router();});
   v.querySelector("#emailrel").onclick=()=>emailManutencao(m);
+  v.querySelector("#delmnt")&&(v.querySelector("#delmnt").onclick=()=>excluir("manutencoes",id,"Manutenção",()=>location.hash="#/manutencoes"));
   // hint
   const fh=v.querySelector("#finalHint");
   const upd=()=>{const val=v.querySelector("#finalizacao")?.value;if(val==="Aguardando peça")fh.innerHTML='<div class="alertbox" style="margin-top:10px"><span>!</span><div>A OS ficará <b>Aguardando peça</b> e uma solicitação de peça será aberta.</div></div>';else fh.innerHTML="";};
@@ -1491,7 +1623,7 @@ ROUTES.jornada=(v,rest)=>{
   <div class="card pad" style="margin-bottom:16px">
     <h3 style="margin-bottom:12px">Iniciar jornada</h3>
     <div class="formgrid">
-      <label class="f">Técnico<select id="tec">${DB.tecnicos.filter(ativo).map(t=>`<option value="${t.id}"${t.id===VIEWER.tecnicoId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
+      <label class="f">Técnico<select id="tec">${DB.tecnicos.filter(ativo).map(t=>`<option value="${t.id}"${t.id===VIEWER.userId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
       <label class="f">Papel<select id="papel"><option value="motorista">Motorista</option><option value="passageiro">Passageiro / técnico</option></select></label>
       <label class="f">Veículo<select id="vei">${DB.veiculos.filter(x=>ativo(x)&&x.situacao==="Ativo").map(x=>`<option value="${x.id}">${esc(x.placa)} · ${esc(x.marcaModelo)} (${km(x.kmAtual)})</option>`).join("")}</select></label>
       <label class="f">KM inicial<input id="kmi" type="number"></label>
@@ -1512,8 +1644,7 @@ ROUTES.jornada=(v,rest)=>{
   v.querySelector("#startJ").onclick=()=>{
     const kmi=+v.querySelector("#kmi").value;
     if(!kmi)return toast("Informe o KM inicial.");
-    VIEWER.tecnicoId=v.querySelector("#tec").value;saveViewer();
-    const j={id:uid("jor"),criadaEm:nowISO(),tecnicoId:VIEWER.tecnicoId,papel:v.querySelector("#papel").value,veiculoId:veiSel.value,kmInicial:kmi,kmFinal:null,origem:v.querySelector("#origem").value,status:"aberta",
+    const j={id:uid("jor"),criadaEm:nowISO(),tecnicoId:v.querySelector("#tec").value,papel:v.querySelector("#papel").value,veiculoId:veiSel.value,kmInicial:kmi,kmFinal:null,origem:v.querySelector("#origem").value,status:"aberta",
       eventos:[{tipo:"login",ts:nowISO()}]};
     const file=v.querySelector("#painel").files[0];
     const fin=()=>{DB.jornadas.unshift(j);audit("Início","Jornada",j.id);persist();location.hash="#/jornada/"+j.id;};
@@ -1530,7 +1661,8 @@ function jornadaDetalhe(v,id){
   const last=evs[evs.length-1]?.tipo;
   const emAlmoco=last==="almoco_inicio";
   const add=(tipo,extra)=>{j.eventos.push({tipo,ts:nowISO(),...(extra||{})});audit("Evento","Jornada",id,EVT_LABEL[tipo]);persist();router();};
-  v.innerHTML=`<a class="btn ghost sm" href="#/jornada">← Jornada</a>
+  v.innerHTML=`<div class="between" style="margin-bottom:6px"><a class="btn ghost sm" href="#/jornada">← Jornada</a>
+    ${can("excluir")?`<button class="btn sm danger" id="deljor">Excluir</button>`:""}</div>
   <div class="pagehead between"><div><h1>Jornada · ${fmtDate(j.criadaEm)}</h1>
     <p>${esc(veiNome(j.veiculoId))} · ${esc(tecNome(j.tecnicoId))} (${esc(j.papel||"—")}) · origem ${esc(j.origem)}</p></div>
     <div>${aberta?'<span class="pill warn"><span class="dot"></span>em andamento</span>':'<span class="pill good">encerrada</span>'}</div></div>
@@ -1566,6 +1698,7 @@ function jornadaDetalhe(v,id){
     </div>
   </div>`;
   v.querySelectorAll("[data-ev]").forEach(b=>b.onclick=()=>add(b.dataset.ev));
+  v.querySelector("#deljor")&&(v.querySelector("#deljor").onclick=()=>excluir("jornadas",id,"Jornada",()=>location.hash="#/jornada"));
   v.querySelector("#encerrarJ")&&(v.querySelector("#encerrarJ").onclick=()=>{
     const kmf=+v.querySelector("#kmf").value;
     if(!kmf||kmf<j.kmInicial)return toast("KM final inválido.");
@@ -1609,11 +1742,11 @@ function veicDetalhe(v,id){
         <td class="small">${p.ultData?fmtDate(p.ultData):"—"}<br>${p.ultKm?km(p.ultKm):""}</td>
         <td class="small tnum">${isFinite(s.kmRest)?km(s.kmRest):""}${isFinite(s.kmRest)&&isFinite(s.diasRest)?"<br>":""}${isFinite(s.diasRest)?s.diasRest+" d":""}</td>
         <td><span class="pill ${s.cls}">${s.label}</span></td>
-        <td>${can("editar")?`<button class="btn sm" data-done="${p.id}">Registrar</button>`:""}</td></tr>`;}).join("")||'<tr><td colspan="6" class="muted">Sem preventivas.</td></tr>'}
+        <td class="nowrap">${can("editar")?`<button class="btn sm" data-done="${p.id}">Registrar</button> `:""}${can("excluir")?`<button class="btn sm danger" data-rmpv="${p.id}">×</button>`:""}</td></tr>`;}).join("")||'<tr><td colspan="6" class="muted">Sem preventivas.</td></tr>'}
       </tbody></table></div></div>
       <div class="panel"><div class="ph"><h3>Abastecimentos</h3><a class="btn ghost sm" href="#/abastecimento">Registrar</a></div>
-      <div class="tblwrap"><table class="tbl"><thead><tr><th>Data</th><th>Posto</th><th>Litros</th><th>Total</th><th>R$/L</th></tr></thead><tbody>
-      ${abast.map(a=>`<tr><td>${fmtDate(a.dataHora)}</td><td>${esc(a.posto)}</td><td class="tnum">${a.litros}</td><td class="tnum">${money(a.valorTotal)}</td><td class="tnum">${money(a.precoLitro)}</td></tr>`).join("")||'<tr><td colspan="5" class="muted">Nenhum.</td></tr>'}
+      <div class="tblwrap"><table class="tbl"><thead><tr><th>Data</th><th>Posto</th><th>Litros</th><th>Total</th><th>R$/L</th><th></th></tr></thead><tbody>
+      ${abast.map(a=>`<tr><td>${fmtDate(a.dataHora)}</td><td>${esc(a.posto)}</td><td class="tnum">${a.litros}</td><td class="tnum">${money(a.valorTotal)}</td><td class="tnum">${money(a.precoLitro)}</td><td class="nowrap">${can("editar")?`<button class="btn sm" data-edab="${a.id}">Editar</button> `:""}${can("excluir")?`<button class="btn sm danger" data-rmab="${a.id}">×</button>`:""}</td></tr>`).join("")||'<tr><td colspan="6" class="muted">Nenhum.</td></tr>'}
       </tbody></table></div></div>
     </div>
     <div class="card pad"><h3 style="margin-bottom:10px">Dados</h3>
@@ -1628,10 +1761,13 @@ function veicDetalhe(v,id){
   </div>`;
   can("editar")&&(v.querySelector("#edit").onclick=()=>veicForm(v,x));
   can("editar")&&(v.querySelector("#addpv").onclick=()=>preventivaModal(x));
-  can("editar")&&(v.querySelector("#del").onclick=()=>excluir("veiculos",id,"Veículo",()=>location.hash="#/veiculos","editar"));
+  can("excluir")&&(v.querySelector("#del").onclick=()=>excluir("veiculos",id,"Veículo",()=>location.hash="#/veiculos"));
   v.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>{
     const p=byId("preventivas",b.dataset.done);p.ultData=nowISO();p.ultKm=x.kmAtual;audit("Registro","Preventiva",p.id,p.tipo);persist();toast("Preventiva registrada.");router();
   });
+  v.querySelectorAll("[data-rmpv]").forEach(b=>b.onclick=()=>excluir("preventivas",b.dataset.rmpv,"Preventiva",()=>router()));
+  v.querySelectorAll("[data-edab]").forEach(b=>b.onclick=()=>abastecimentoModal(byId("abastecimentos",b.dataset.edab)));
+  v.querySelectorAll("[data-rmab]").forEach(b=>b.onclick=()=>excluir("abastecimentos",b.dataset.rmab,"Abastecimento",()=>router()));
 }
 function preventivaModal(x){
   modal({title:"Nova preventiva · "+x.placa,body:`<div class="formgrid">
@@ -1675,21 +1811,44 @@ function veicForm(v,x){
 }
 
 /* ============ ESTOQUE ============ */
+function produtoModal(p){
+  const e=p||{};
+  modal({title:p?"Editar produto":"Novo produto",body:`<div class="formgrid">
+    <label class="f full">Descrição <span class="rq">*</span><input id="pd" value="${esc(e.descricao||"")}"></label>
+    <label class="f">Código<input id="pc" class="mono" value="${esc(e.codigo||"")}"></label>
+    <label class="f">Referência<input id="pr" value="${esc(e.referencia||"")}"></label>
+    <label class="f">Código de barras<input id="pb" class="mono" value="${esc(e.barras||"")}"></label>
+    <label class="f">Estoque atual<input id="pe" type="number" step="any" value="${esc(e.estoque??0)}"></label>
+    <label class="f">Estoque mínimo<input id="pm" type="number" step="any" value="${esc(e.minimo??0)}"></label>
+    <label class="f">Custo unitário<input id="pu" type="number" step="any" value="${esc(e.custo??0)}"></label>
+    <label class="f">Fonte<input id="pf" value="${esc(e.fonte||CFG().osExterna||"Manual")}"></label>
+  </div>`,footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="okprod">Salvar</button>`});
+  $("#okprod").onclick=()=>{
+    const d=$("#pd").value.trim();if(!d)return toast("Informe a descrição.");
+    const data={descricao:d,codigo:$("#pc").value.trim(),referencia:$("#pr").value.trim(),barras:$("#pb").value.trim(),estoque:+$("#pe").value||0,minimo:+$("#pm").value||0,custo:+$("#pu").value||0,fonte:$("#pf").value.trim()||"Manual"};
+    if(p){Object.assign(p,data);audit("Edição","Produto",p.id,d);}
+    else{const n={id:uid("pr"),...data};DB.produtos.unshift(n);audit("Criação","Produto",n.id,d);}
+    persist();closeModal();toast("Produto salvo.");router();
+  };
+}
 ROUTES.estoque=(v)=>{
   let q="";
   const draw=()=>{
     const list=DB.produtos.filter(ativo).filter(p=>!q||[p.codigo,p.descricao,p.referencia,p.barras].join(" ").toLowerCase().includes(q.toLowerCase()));
     v.querySelector("#prodBody").innerHTML=list.map(p=>`<tr>
-      <td><div style="font-weight:600">${esc(p.descricao)}</div><div class="small muted mono">${esc(p.codigo)} · ${esc(p.referencia)} · ${esc(p.barras)}</div></td>
+      <td><div style="font-weight:600">${esc(p.descricao)}</div><div class="small muted mono">${esc(p.codigo||"—")} · ${esc(p.referencia||"")} · ${esc(p.barras||"")}</div></td>
       <td class="tnum">${p.estoque}</td><td class="tnum">${p.minimo}</td><td class="tnum">${money(p.custo)}</td>
       <td><span class="pill ${p.estoque<=0?"crit":p.estoque<=p.minimo?"warn":"good"}">${p.estoque<=0?"Zerado":p.estoque<=p.minimo?"Baixo":"OK"}</span></td>
-      <td class="small">${esc(p.fonte)}</td></tr>`).join("")||'<tr><td colspan="6" class="muted">Nada encontrado.</td></tr>';
+      <td class="small nowrap">${can("editar")?`<button class="btn sm" data-edprod="${p.id}">Editar</button> `:""}${can("excluir")?`<button class="btn sm danger" data-rmprod="${p.id}">×</button>`:""}</td></tr>`).join("")||'<tr><td colspan="6" class="muted">Nenhum produto. Toque em "+ Produto".</td></tr>';
+    v.querySelectorAll("[data-edprod]").forEach(b=>b.onclick=()=>produtoModal(byId("produtos",b.dataset.edprod)));
+    v.querySelectorAll("[data-rmprod]").forEach(b=>b.onclick=()=>excluir("produtos",b.dataset.rmprod,"Produto",()=>router()));
   };
-  v.innerHTML=`<div class="pagehead"><h1>Peças &amp; estoque</h1><p>O Bling é a fonte de produtos e estoque comercial. O app registra o uso técnico da peça e o vínculo com OS/equipamento, e trata solicitações.</p></div>
+  v.innerHTML=`<div class="pagehead between"><div><h1>Peças &amp; estoque</h1><p>Cadastre os produtos da sua empresa. O app registra o uso técnico da peça e o vínculo com OS/equipamento, e trata solicitações.</p></div>
+    ${can("criar")?`<button class="btn primary" id="addProd">+ Produto</button>`:""}</div>
   <div class="row" style="margin-bottom:12px"><div class="searchbar"><span class="ic">⌕</span><input id="q" placeholder="Código, descrição, referência ou código de barras"></div></div>
   <div class="detailgrid two">
-    <div class="panel"><div class="ph"><h3>Produtos (Bling)</h3></div>
-      <div class="tblwrap"><table class="tbl"><thead><tr><th>Produto</th><th>Estoque</th><th>Mín.</th><th>Custo</th><th>Situação</th><th>Fonte</th></tr></thead><tbody id="prodBody"></tbody></table></div>
+    <div class="panel"><div class="ph"><h3>Produtos</h3></div>
+      <div class="tblwrap"><table class="tbl"><thead><tr><th>Produto</th><th>Estoque</th><th>Mín.</th><th>Custo</th><th>Situação</th><th></th></tr></thead><tbody id="prodBody"></tbody></table></div>
     </div>
     <div class="panel"><div class="ph"><h3>Solicitações de peça</h3></div>
       <div class="list">${DB.solicitacoesPeca.filter(ativo).map(s=>`
@@ -1697,19 +1856,41 @@ ROUTES.estoque=(v)=>{
         <div class="d">OS ${esc(s.osRef||"—")} · ${esc(s.equipamentoId?eqNome(s.equipamentoId):"—")}</div>
         <div class="small muted">${esc(s.motivo)}</div></div><span class="sp"></span>
         <span class="pill ${s.status==="pendente"?"warn":"good"}">${esc(s.status)}</span>
-        ${s.status==="pendente"&&can("editar")?`<button class="btn sm" data-atende="${s.id}">Atender</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhuma solicitação.</div>'}
+        ${s.status==="pendente"&&can("editar")?`<button class="btn sm" data-atende="${s.id}">Atender</button>`:""}
+        ${can("excluir")?`<button class="btn sm danger" data-rmsol="${s.id}">×</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhuma solicitação.</div>'}
       </div>
     </div>
   </div>`;
+  v.querySelector("#addProd")&&(v.querySelector("#addProd").onclick=()=>produtoModal(null));
   v.querySelector("#q").oninput=e=>{q=e.target.value;draw();};
   v.querySelectorAll("[data-atende]").forEach(b=>b.onclick=()=>{
     const s=byId("solicitacoesPeca",b.dataset.atende);s.status="atendida";
     const o=DB.ordens.find(x=>ativo(x)&&x.numeroBling===s.osRef);if(o&&o.status==="aguardando_peca")o.status="aguardando_retorno";
     audit("Atendimento","Solicitação de peça",s.id,s.produtoNome);persist();toast("Solicitação atendida — OS liberada para retorno.");router();
   });
+  v.querySelectorAll("[data-rmsol]").forEach(b=>b.onclick=()=>excluir("solicitacoesPeca",b.dataset.rmsol,"Solicitação",()=>router()));
   draw();
 };
 
+function abastecimentoModal(a){
+  if(!a)return;
+  modal({title:"Editar abastecimento",body:`<div class="formgrid">
+    <label class="f">Posto<input id="ea_posto" value="${esc(a.posto||"")}"></label>
+    <label class="f">Data / hora<input id="ea_dh" type="datetime-local" value="${esc((a.dataHora||"").slice(0,16))}"></label>
+    <label class="f">Combustível<input id="ea_comb" value="${esc(a.combustivel||"")}"></label>
+    <label class="f">Litros<input id="ea_l" type="number" step="any" value="${esc(a.litros)}"></label>
+    <label class="f">Valor total<input id="ea_v" type="number" step="any" value="${esc(a.valorTotal)}"></label>
+    <label class="f">Preço/litro<input id="ea_p" type="number" step="any" value="${esc(a.precoLitro)}"></label>
+    <label class="f full">Documento fiscal<input id="ea_doc" value="${esc(a.docFiscal||"")}"></label>
+    <label class="f full">Veículo<select id="ea_vei">${DB.veiculos.filter(ativo).map(x=>`<option value="${x.id}"${a.veiculoId===x.id?" selected":""}>${esc(x.placa)}</option>`).join("")}</select></label>
+  </div>`,footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="ea_ok">Salvar</button>`});
+  $("#ea_ok").onclick=()=>{
+    a.posto=$("#ea_posto").value.trim();a.dataHora=$("#ea_dh").value;a.combustivel=$("#ea_comb").value.trim();
+    a.litros=+$("#ea_l").value||0;a.valorTotal=+$("#ea_v").value||0;a.precoLitro=+$("#ea_p").value||(a.litros?a.valorTotal/a.litros:0);
+    a.docFiscal=$("#ea_doc").value.trim();a.veiculoId=$("#ea_vei").value;
+    audit("Edição","Abastecimento",a.id);persist();closeModal();toast("Abastecimento salvo.");router();
+  };
+}
 /* ============ ABASTECIMENTO ============ */
 ROUTES.abastecimento=(v)=>{
   v.innerHTML=`<div class="pagehead"><h1>Abastecimento</h1><p>Fluxo: abastecer → escanear o QR Code do documento fiscal → conferir dados → confirmar → vincular ao veículo/jornada. Sempre editável; se o QR não ler, preenchimento manual.</p></div>
@@ -1733,11 +1914,13 @@ ROUTES.abastecimento=(v)=>{
       <button class="btn primary" id="save" style="margin-top:14px">Confirmar e vincular</button>
     </div>
     <div class="panel"><div class="ph"><h3>Últimos abastecimentos</h3></div>
-      <div class="tblwrap"><table class="tbl"><thead><tr><th>Data</th><th>Veículo</th><th>L</th><th>Total</th></tr></thead><tbody>
-      ${DB.abastecimentos.filter(ativo).sort((a,b)=>new Date(b.dataHora)-new Date(a.dataHora)).map(a=>`<tr><td>${fmtDate(a.dataHora)}</td><td class="mono">${esc(byId("veiculos",a.veiculoId)?.placa||"—")}</td><td class="tnum">${a.litros}</td><td class="tnum">${money(a.valorTotal)}</td></tr>`).join("")||'<tr><td colspan="4" class="muted">Nenhum.</td></tr>'}
+      <div class="tblwrap"><table class="tbl"><thead><tr><th>Data</th><th>Veículo</th><th>L</th><th>Total</th><th></th></tr></thead><tbody>
+      ${DB.abastecimentos.filter(ativo).sort((a,b)=>new Date(b.dataHora)-new Date(a.dataHora)).map(a=>`<tr><td>${fmtDate(a.dataHora)}</td><td class="mono">${esc(byId("veiculos",a.veiculoId)?.placa||"—")}</td><td class="tnum">${a.litros}</td><td class="tnum">${money(a.valorTotal)}</td><td class="nowrap">${can("editar")?`<button class="btn sm" data-edab="${a.id}">Editar</button> `:""}${can("excluir")?`<button class="btn sm danger" data-rmab="${a.id}">×</button>`:""}</td></tr>`).join("")||'<tr><td colspan="5" class="muted">Nenhum.</td></tr>'}
       </tbody></table></div>
     </div>
   </div>`;
+  v.querySelectorAll("[data-edab]").forEach(b=>b.onclick=()=>abastecimentoModal(byId("abastecimentos",b.dataset.edab)));
+  v.querySelectorAll("[data-rmab]").forEach(b=>b.onclick=()=>excluir("abastecimentos",b.dataset.rmab,"Abastecimento",()=>router()));
   const jA=jornadaAberta();if(jA)v.querySelector("#jornadaId").value=jA.id;
   v.querySelector("#scan").onclick=()=>{
     const postos=["Posto Trevo","Auto Posto Central","Posto Ipiranga BR277","Shell Rodovia"];
@@ -2074,39 +2257,72 @@ ROUTES.fluxo=(v)=>{
   </div>`;
 };
 
-function tecnicoModal(t){
-  modal({title:t?"Editar técnico":"Novo técnico",body:`<div class="stack">
+function usuarioModal(t){
+  const novo=!t;
+  modal({title:novo?"Novo usuário":"Editar usuário",body:`<div class="stack">
     <label class="f">Nome <span class="rq">*</span><input id="tn" value="${esc(t?.nome||"")}"></label>
-    <label class="f">Perfil de acesso<select id="tp">${Object.entries(PERFIS).map(([k,x])=>`<option value="${k}"${t&&t.perfil===k?" selected":""}>${x.nome}</option>`).join("")}</select></label>
+    <label class="f">Usuário (login) <span class="rq">*</span><input id="tl" autocapitalize="none" spellcheck="false" value="${esc(t?.login||"")}"></label>
+    <label class="f">Nível de acesso<select id="tp">${Object.entries(PAPEIS).map(([k,x])=>`<option value="${k}"${(t?t.papel:"tecnico")===k?" selected":""}>${x.nome}</option>`).join("")}</select></label>
+    <p class="small muted" style="margin:0">${esc(PAPEIS.tecnico.d)}</p>
+    <label class="f">${novo?"Senha":"Nova senha (deixe em branco p/ manter)"} ${novo?'<span class="rq">*</span>':""}<input id="ts" type="password" placeholder="${novo?"mínimo 4 caracteres":"•••• (manter)"}"></label>
   </div>`,footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="oktec">Salvar</button>`});
   $("#oktec").onclick=()=>{
     const nome=$("#tn").value.trim();if(!nome)return toast("Informe o nome.");
-    const perfil=$("#tp").value;
-    if(t){t.nome=nome;t.perfil=perfil;audit("Edição","Técnico",t.id,nome);}
-    else{const n={id:uid("tec"),nome,perfil};DB.tecnicos.push(n);audit("Criação","Técnico",n.id,nome);}
-    persist();closeModal();toast("Técnico salvo.");router();
+    const login=$("#tl").value.trim().toLowerCase();if(!login)return toast("Informe o usuário (login).");
+    if(DB.tecnicos.some(x=>x.id!==(t&&t.id)&&!x.excluido&&(x.login||"").toLowerCase()===login))return toast("Já existe um usuário com esse login.");
+    const papel=$("#tp").value,senha=$("#ts").value;
+    if(novo&&senha.length<4)return toast("Senha de ao menos 4 caracteres.");
+    if(senha&&senha.length<4)return toast("Senha de ao menos 4 caracteres.");
+    if(t){
+      const eraAdmin=t.papel==="admin";
+      t.nome=nome;t.login=login;t.papel=papel;if(senha)t.senha=hashSenha(senha);
+      if(eraAdmin&&papel!=="admin"&&!DB.tecnicos.some(x=>x.papel==="admin"&&!x.excluido&&x.id!==t.id))return toast("Deve haver ao menos um administrador.");
+      audit("Edição","Usuário",t.id,nome);
+    }else{
+      const n={id:uid("tec"),nome,login,papel,senha:hashSenha(senha)};DB.tecnicos.push(n);audit("Criação","Usuário",n.id,nome);
+    }
+    persist();closeModal();toast("Usuário salvo.");router();
   };
 }
+const tecnicoModal=usuarioModal;
 
 /* ============ CONFIGURAÇÕES ============ */
 ROUTES.config=(v)=>{
-  v.innerHTML=`<div class="pagehead"><h1>Configurações</h1><p>Campos técnicos e listas do sistema. Adicionar campo não altera a estrutura do app — o cadastro do equipamento e o registro de manutenção passam a exibi-lo.</p></div>
-  <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Campos técnicos do equipamento</h3>${can("editar")?`<button class="btn sm" id="addCT">+ Campo</button>`:""}</div>
-    <div class="tblwrap"><table class="tbl"><thead><tr><th>Nome</th><th>Tipo</th><th>Obrigatório</th><th></th></tr></thead><tbody>
-    ${DB.camposTecnicos.filter(ativo).map(c=>`<tr><td>${esc(c.nome)}</td><td>${esc(c.tipo)}</td><td>${c.obrig?'<span class="pill accent">sim</span>':"não"}</td>
-    <td>${can("editar")?`<button class="btn sm danger" data-rmct="${c.id}">Remover</button>`:""}</td></tr>`).join("")}
-    </tbody></table></div>
+  const c=CFG(),adm=ehAdmin();
+  v.innerHTML=`<div class="pagehead"><h1>Configurações</h1><p>Adapte o app à sua empresa: identidade, campos e usuários. As mudanças sincronizam para todos.</p></div>
+
+  <div class="card pad" style="margin-bottom:16px">
+    <h3 style="margin-bottom:10px">Identidade da empresa</h3>
+    <div class="formgrid">
+      <label class="f full">Nome da empresa<input id="cEmpresa" value="${esc(c.empresa||"")}" ${adm?"":"disabled"}></label>
+      <label class="f">Como você chama o equipamento (singular)<input id="cEqL" value="${esc(c.equipLabel||"Equipamento")}" ${adm?"":"disabled"} placeholder="Gerador, Bomba, Elevador…"></label>
+      <label class="f">No plural<input id="cEqLP" value="${esc(c.equipLabelPlural||"Equipamentos")}" ${adm?"":"disabled"}></label>
+      <label class="f full">Rótulo do "setor/local atendido"<input id="cSetor" value="${esc(c.setorLabel||"Setor atendido")}" ${adm?"":"disabled"} placeholder="Piscina, Andar, Linha de produção…"></label>
+      <label class="f full">Nome do sistema externo de OS<input id="cOsExt" value="${esc(c.osExterna||"")}" ${adm?"":"disabled"} placeholder="Bling, Omie, ERP próprio… (opcional)"></label>
+    </div>
+    ${adm?`<button class="btn primary" id="cSalvar" style="margin-top:12px">Salvar identidade</button>`:`<p class="small muted" style="margin-top:8px">Só o administrador altera a identidade.</p>`}
   </div>
-  <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Técnicos</h3>${can("editar")?`<button class="btn sm" id="addTec">+ Técnico</button>`:""}</div>
-    <div class="list">${DB.tecnicos.filter(ativo).map(t=>`<div class="item"><span class="avatar">${esc((t.nome[0]||"?").toUpperCase())}</span>
-      <div><div class="t">${esc(t.nome)}</div><div class="d">${esc(PERFIS[t.perfil]?.nome||t.perfil)}</div></div><span class="sp"></span>
-      ${can("editar")?`<button class="btn sm" data-edtec="${t.id}">Editar</button><button class="btn sm danger" data-rmtec="${t.id}">Excluir</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhum técnico.</div>'}</div>
+
+  <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Campos técnicos do ${esc(eqLabel().toLowerCase())}</h3>${can("editar")?`<button class="btn sm" id="addCT">+ Campo</button>`:""}</div>
+    <div class="list">${DB.camposTecnicos.filter(ativo).map(cf=>`<div class="item"><div><div class="t">${esc(cf.nome)}</div><div class="d">${esc(cf.tipo)}${cf.obrig?" · obrigatório":""}</div></div><span class="sp"></span>
+      ${can("editar")?`<button class="btn sm danger" data-rmct="${cf.id}">Remover</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhum campo.</div>'}</div>
   </div>
+
+  <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Campos de medição (na manutenção)</h3>${can("editar")?`<button class="btn sm" id="addMed">+ Medição</button>`:""}</div>
+    <div class="list">${(c.medicoes||[]).map((m,ix)=>`<div class="item"><div class="t">${esc(m)}</div><span class="sp"></span>${can("editar")?`<button class="btn sm danger" data-rmmed="${ix}">Remover</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhum campo de medição. O técnico ainda pode anotar em Observações.</div>'}</div>
+  </div>
+
+  <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Usuários e acesso</h3>${can("criar")?`<button class="btn sm" id="addTec">+ Usuário</button>`:""}</div>
+    <div class="list">${DB.tecnicos.filter(ativo).map(t=>`<div class="item"><span class="avatar">${esc(iniciais(t.nome))}</span>
+      <div><div class="t">${esc(t.nome)} ${t.id===VIEWER.userId?'<span class="pill accent">você</span>':""}</div><div class="d">${esc(PAPEIS[t.papel]?.nome||t.papel)} · login <b>${esc(t.login||"—")}</b></div></div><span class="sp"></span>
+      ${can("editar")?`<button class="btn sm" data-edtec="${t.id}">Editar</button>`:""}${can("excluir")?`<button class="btn sm danger" data-rmtec="${t.id}">Excluir</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhum usuário.</div>'}</div>
+  </div>
+
   <div class="detailgrid two">
-    <div class="card pad"><h3 style="margin-bottom:8px">Técnico ativo neste aparelho</h3>
+    <div class="card pad"><h3 style="margin-bottom:8px">Técnico ativo neste aparelho (jornada)</h3>
       <label class="f">Usado ao iniciar jornada
-        <select id="tecAtual">${DB.tecnicos.filter(ativo).map(t=>`<option value="${t.id}"${t.id===VIEWER.tecnicoId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
-      <p class="small muted" style="margin-top:8px">Escolha local — não sincroniza.</p>
+        <select id="tecAtual">${DB.tecnicos.filter(ativo).map(t=>`<option value="${t.id}"${t.id===VIEWER.userId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
+      <p class="small muted" style="margin-top:8px">Normalmente é você mesmo (usuário logado).</p>
     </div>
     <div class="card pad"><h3 style="margin-bottom:8px">Base de dados</h3>
       <p class="small" id="syncinfo" style="margin:0 0 6px"></p>
@@ -2161,7 +2377,22 @@ alter publication supabase_realtime add table geracampo_estado;</pre>
   };
   v.querySelector("#supadisc").onclick=()=>{if(confirm("Desconectar do Supabase? O app volta ao modo local neste dispositivo (os dados permanecem no Supabase)."))
     {setSupaCfg(null);setTimeout(()=>location.reload(),200);}};
-  v.querySelector("#tecAtual").onchange=e=>{VIEWER.tecnicoId=e.target.value;saveViewer();toast("Técnico ativo (neste dispositivo) alterado.");};
+  v.querySelector("#tecAtual").onchange=e=>{VIEWER.userId=e.target.value;saveViewer();renderRole();toast("Técnico da jornada: "+(byId("tecnicos",e.target.value)||{}).nome);};
+  v.querySelector("#cSalvar")&&(v.querySelector("#cSalvar").onclick=()=>{
+    const cc=CFG();
+    cc.empresa=v.querySelector("#cEmpresa").value.trim()||"Minha Empresa";
+    cc.equipLabel=v.querySelector("#cEqL").value.trim()||"Equipamento";
+    cc.equipLabelPlural=v.querySelector("#cEqLP").value.trim()||"Equipamentos";
+    cc.setorLabel=v.querySelector("#cSetor").value.trim()||"Setor atendido";
+    cc.osExterna=v.querySelector("#cOsExt").value.trim();
+    audit("Edição","Identidade","main",cc.empresa);persist();
+    renderNav();renderRole();toast("Identidade salva.");router();
+  });
+  v.querySelector("#addMed")&&(v.querySelector("#addMed").onclick=()=>{
+    const nome=prompt("Nome do campo de medição (ex.: Pressão, Vazão, pH)");if(!nome)return;
+    const cc=CFG();cc.medicoes=cc.medicoes||[];cc.medicoes.push(nome.trim());audit("Criação","Campo de medição","",nome);persist();router();
+  });
+  v.querySelectorAll("[data-rmmed]").forEach(b=>b.onclick=()=>{const cc=CFG();cc.medicoes.splice(+b.dataset.rmmed,1);audit("Exclusão","Campo de medição","");persist();router();});
   v.querySelector("#addCT")&&(v.querySelector("#addCT").onclick=()=>{
     modal({title:"Novo campo técnico",body:`<div class="stack">
       <label class="f">Nome<input id="cn"></label>
@@ -2170,15 +2401,15 @@ alter publication supabase_realtime add table geracampo_estado;</pre>
     </div>`,footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="ok">Adicionar</button>`});
     $("#ok").onclick=()=>{if(!$("#cn").value.trim())return toast("Informe o nome.");DB.camposTecnicos.push({id:uid("ct"),nome:$("#cn").value.trim(),tipo:$("#ct").value,obrig:$("#co").checked});audit("Criação","Campo técnico","");persist();closeModal();router();};
   });
-  v.querySelectorAll("[data-rmct]").forEach(b=>b.onclick=()=>{const c=byId("camposTecnicos",b.dataset.rmct);c.excluido={ts:nowISO(),usuario:perfilNome(),motivo:"removido em configurações"};audit("Exclusão","Campo técnico",c.id);persist();router();});
-  v.querySelector("#addTec")&&(v.querySelector("#addTec").onclick=()=>tecnicoModal(null));
-  v.querySelectorAll("[data-edtec]").forEach(b=>b.onclick=()=>tecnicoModal(byId("tecnicos",b.dataset.edtec)));
+  v.querySelectorAll("[data-rmct]").forEach(b=>b.onclick=()=>{const c=byId("camposTecnicos",b.dataset.rmct);c.excluido={ts:nowISO(),usuario:auditUser(),motivo:"removido em configurações"};audit("Exclusão","Campo técnico",c.id);persist();router();});
+  v.querySelector("#addTec")&&(v.querySelector("#addTec").onclick=()=>usuarioModal(null));
+  v.querySelectorAll("[data-edtec]").forEach(b=>b.onclick=()=>usuarioModal(byId("tecnicos",b.dataset.edtec)));
   v.querySelectorAll("[data-rmtec]").forEach(b=>b.onclick=()=>{
-    if(DB.tecnicos.filter(ativo).length<=1)return toast("Deixe ao menos um técnico ativo.");
-    excluir("tecnicos",b.dataset.rmtec,"Técnico",()=>{
-      if(VIEWER.tecnicoId===b.dataset.rmtec){const t=DB.tecnicos.find(ativo);if(t){VIEWER.tecnicoId=t.id;saveViewer();}}
-      router();
-    },"editar");
+    const alvo=byId("tecnicos",b.dataset.rmtec);
+    if(alvo&&alvo.id===VIEWER.userId)return toast("Você não pode excluir o próprio usuário logado.");
+    if(alvo&&alvo.papel==="admin"&&DB.tecnicos.filter(t=>t.papel==="admin"&&!t.excluido).length<=1)return toast("Deve haver ao menos um administrador.");
+    if(DB.tecnicos.filter(ativo).length<=1)return toast("Deixe ao menos um usuário ativo.");
+    excluir("tecnicos",b.dataset.rmtec,"Usuário",()=>router());
   });
   v.querySelector("#export").onclick=()=>{toast("JSON no console.");console.log(JSON.stringify(DB,null,2));};
   v.querySelector("#reset").onclick=()=>{if(confirm(backendAtivo()?"Restaurar a base de teste? Isso substitui os dados de TODOS que usam o link.":"Restaurar a base de teste? Os dados atuais serão perdidos."))
@@ -2187,7 +2418,7 @@ alter publication supabase_realtime add table geracampo_estado;</pre>
 
 /* ============ AUDITORIA ============ */
 ROUTES.auditoria=(v)=>{
-  const excl=[];["clientes","equipamentos","veiculos","tecnicos","produtos","solicitacoesPeca","camposTecnicos"].forEach(a=>DB[a].filter(x=>x.excluido).forEach(x=>excl.push({a,x})));
+  const excl=[];["clientes","equipamentos","veiculos","tecnicos","produtos","ordens","manutencoes","preventivas","abastecimentos","jornadas","solicitacoesPeca","camposTecnicos"].forEach(a=>DB[a].filter(x=>x.excluido).forEach(x=>excl.push({a,x})));
   v.innerHTML=`<div class="pagehead"><h1>Auditoria</h1><p>Toda exclusão administrativa registra usuário, data/hora e motivo. Preferência por exclusão lógica em vez de apagar históricos.</p></div>
   <div class="detailgrid two">
     <div class="panel"><div class="ph"><h3>Trilha de auditoria</h3><span class="small muted">${DB.auditoria.length} evento(s)</span></div>
@@ -2196,7 +2427,7 @@ ROUTES.auditoria=(v)=>{
       </tbody></table></div>
     </div>
     <div class="panel"><div class="ph"><h3>Registros excluídos (soft delete)</h3></div>
-      <div class="list">${excl.map(({a,x})=>`<div class="item"><div><div class="t">${esc(x.razao||x.ns||x.placa||x.nome||x.descricao||x.produtoNome||x.id)}</div>
+      <div class="list">${excl.map(({a,x})=>`<div class="item"><div><div class="t">${esc(x.razao||x.ns||x.placa||x.nome||x.numeroBling||x.descricao||x.produtoNome||x.servico||x.problema||(x.criadaEm?"Jornada "+fmtDate(x.criadaEm):"")||x.id)}</div>
       <div class="d">${esc(a)} · ${esc(x.excluido.usuario)} · ${fmtDT(x.excluido.ts)}</div>
       <div class="small muted">${esc(x.excluido.motivo)}</div></div>
       <span class="sp"></span>${can("excluir")?`<button class="btn sm" data-restore="${a}:${x.id}">Restaurar</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhum registro excluído.</div>'}
@@ -2221,7 +2452,8 @@ function installPWA(){
       c.fill(new Path2D("M300 70 150 300h108l-16 142 150-190h-104l12-182Z"));
       pngIcon=cv.toDataURL("image/png");
     }catch(e){}
-    const manifest={name:"GeraCampo",short_name:"GeraCampo",description:"Manutenção de geradores e operação de campo",
+    const nm=(CFG().empresa&&CFG().empresa!=="Minha Empresa")?CFG().empresa:"GeraCampo";
+    const manifest={name:nm,short_name:nm.slice(0,12),description:"Manutenção e operação de campo",
       start_url:".",scope:".",display:"standalone",orientation:"portrait",
       background_color:"#0e7490",theme_color:"#0e7490",
       icons:[{src:pngIcon,sizes:"192x192",type:"image/png",purpose:"any"},{src:svgIcon,sizes:"512x512",type:"image/svg+xml",purpose:"any maskable"}]};
@@ -2236,8 +2468,9 @@ function installPWA(){
 /* ---------- boot ---------- */
 installPWA();
 renderNav();renderTabs();renderRole();
-$("#userbtn").onclick=()=>trocarTecnico();
+$("#userbtn").onclick=()=>contaSheet();
 $("#backbtn").onclick=()=>{if(history.length>1)history.back();else location.hash="#/mais";};
+$("#loginform").addEventListener("submit",e=>{e.preventDefault();fazerLogin();});
 const THEMEKEY="geracampo_theme";
 try{const t=localStorage.getItem(THEMEKEY);if(t)document.documentElement.dataset.theme=t;}catch(e){}
 function applyThemeColor(){
@@ -2251,7 +2484,6 @@ $("#themebtn").onclick=()=>{
   document.documentElement.dataset.theme=nxt;try{localStorage.setItem(THEMEKEY,nxt);}catch(e){}
   applyThemeColor();
 };
-router();
+if(autenticado()){router();}else{mostrarLogin();}
 initRemote();
-if(VIEWER_FRESH&&DB.tecnicos.filter(ativo).length>1)setTimeout(trocarTecnico,300);
 </script>

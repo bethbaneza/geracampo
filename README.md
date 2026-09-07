@@ -40,11 +40,24 @@ alter publication supabase_realtime add table geracampo_estado;
 A chave publishable é pública (vai no navegador). A policy acima libera geral —
 adequada só para testes fechados.
 
+## Login e acesso
+
+Tela de login por usuário/senha. Dois níveis:
+
+- **Administrador** — acesso total (inclui excluir OS e equipamento/NS).
+- **Usuário (técnico)** — cadastra, altera e exclui itens, **exceto** excluir
+  Ordem de Serviço e equipamento/NS.
+
+Primeiro acesso: `admin` / `admin` (troque em Configurações → Usuários).
+Usuários, campos técnicos, campos de medição e a **identidade da empresa**
+(nome, como chamar o "equipamento", rótulo de setor) são configuráveis —
+o app serve qualquer segmento, não só geradores de cloro.
+
 ## Base de teste
 
-Já vem com registros fictícios (NS `TESTE-001/002/003`, clientes, veículos, OS).
+Já vem com registros fictícios (NS `TESTE-001/002/003`, clientes, veículos, OS)
+e usuários: `admin`/`admin`, `rafael`/`1234`, `diego`/`1234`, `marina`/`1234`.
 *Configurações → Restaurar base de teste* recria tudo.
-Perfis: Técnico / Supervisor / Administrador (seletor no topo).
 
 ## Estrutura funcional
 
