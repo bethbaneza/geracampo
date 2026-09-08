@@ -320,18 +320,29 @@ input[type=checkbox]{min-height:0}
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8Z"/></svg>
     </div>
     <h1 id="loginTitle">GeraCampo</h1>
-    <p class="muted small" id="loginSub">Entre com seu usuário</p>
-    <label class="f">Usuário<input id="loginUser" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
-    <label class="f">Senha<input id="loginPass" type="password" autocomplete="current-password" required></label>
+    <p class="muted small" id="loginSub">Entre com seu e-mail e senha</p>
+    <div id="loginFields">
+      <label class="f">E-mail<input id="loginUser" type="email" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+      <label class="f" style="margin-top:8px">Senha<input id="loginPass" type="password" autocomplete="current-password"></label>
+    </div>
     <div class="alertbox crit" id="loginErr" hidden></div>
-    <button class="btn primary" type="submit" style="width:100%">Entrar</button>
-    <p class="small muted" id="loginHint">Primeiro acesso: usuário <b>admin</b> · senha <b>admin</b> — troque depois em Configurações.</p>
+    <button class="btn primary" type="submit" id="loginBtn" style="width:100%">Entrar</button>
+    <div id="loginDemo" hidden style="display:flex;flex-direction:column;gap:8px">
+      <button type="button" class="btn primary" data-demo="admin" style="width:100%">Entrar como Administrador</button>
+      <button type="button" class="btn" data-demo="tecnico" style="width:100%">Entrar como Técnico</button>
+    </div>
+    <p class="small muted" id="loginHint"></p>
   </form>
 </div>
 
 <script>
 "use strict";
 const KEY="geracampo_v1";
+/* ===== Supabase — a chave "publishable" é PÚBLICA de propósito.
+   A segurança está no RLS (cada empresa só vê os próprios dados;
+   sem login válido a chave não dá acesso a nada). ===== */
+const SUPABASE_URL="https://cahfugahdvrdpymztyhz.supabase.co";
+const SUPABASE_ANON_KEY="sb_publishable_aKCOaHv4l8yzx4KDScxnFw_EsFu9ujS";
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const uid=p=>p+"-"+Math.random().toString(36).slice(2,8);
@@ -368,10 +379,10 @@ const PAPEIS={
 };
 /* entidades que SÓ o administrador pode excluir */
 const SO_ADMIN_EXCLUI=["ordens","equipamentos"];
-/* hash simples de senha (ofusca no banco; não é criptografia forte) */
-function hashSenha(s){let h=5381;s=String(s||"");for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))>>>0;return "h1$"+h.toString(36);}
-function usuarioAtual(){return VIEWER.userId?byId("tecnicos",VIEWER.userId):null;}
-function papelAtual(){return usuarioAtual()?.papel||null;}
+let PERFIL=null;      // perfil do usuário logado (vindo do Supabase Auth)
+let MODO_DEMO=false;  // true = sem servidor (artifact/offline): dados locais só p/ demonstração
+function usuarioAtual(){return PERFIL;}
+function papelAtual(){return PERFIL?.papel||null;}
 function ehAdmin(){return papelAtual()==="admin";}
 const perfilNome=()=>PAPEIS[papelAtual()]?.nome||"—";
 function can(acao,entidade){
@@ -395,10 +406,9 @@ function seed(){
     {id:"ct-tensaomed",nome:"Tensão medida (V)",tipo:"numero",obrig:false}
   ];
   const tecnicos=[
-    {id:"tec-adm",nome:"Administrador",login:"admin",senha:hashSenha("admin"),papel:"admin"},
-    {id:"tec-1",nome:"Rafael Nunes",login:"rafael",senha:hashSenha("1234"),papel:"tecnico"},
-    {id:"tec-2",nome:"Diego Prado",login:"diego",senha:hashSenha("1234"),papel:"tecnico"},
-    {id:"tec-3",nome:"Marina Alves",login:"marina",senha:hashSenha("1234"),papel:"admin"}
+    {id:"tec-1",nome:"Rafael Nunes",papel:"tecnico"},
+    {id:"tec-2",nome:"Diego Prado",papel:"tecnico"},
+    {id:"tec-3",nome:"Marina Alves",papel:"admin"}
   ];
   const configs=[{id:"main",empresa:"Minha Empresa",
     equipLabel:"Gerador",equipLabelPlural:"Geradores",
@@ -467,45 +477,30 @@ function seed(){
   const auditoria=[];
   return {schema:1,configs,camposTecnicos,tecnicos,clientes,equipamentos,veiculos,preventivas,produtos,ordens,manutencoes,solicitacoesPeca,jornadas,abastecimentos,auditoria};
 }
-/* sessão de login NESTE aparelho */
+/* ---------- helpers de sessão / config ---------- */
 const VKEY="geracampo_viewer_v1";
 const VIEWER=(()=>{try{return JSON.parse(localStorage.getItem(VKEY))||{};}catch(e){return{};}})();
 function saveViewer(){try{localStorage.setItem(VKEY,JSON.stringify(VIEWER));}catch(e){}}
-const tecAtualNome=()=>usuarioAtual()?.nome||"—";
+const tecAtualNome=()=>PERFIL?.nome||"—";
 const iniciais=n=>((String(n||"").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join(""))||"?").toUpperCase();
 const CFG=()=>DB.configs&&DB.configs[0]||{};
 const eqLabel=()=>CFG().equipLabel||"Equipamento";
 const eqLabelP=()=>CFG().equipLabelPlural||"Equipamentos";
 const setorLabel=()=>CFG().setorLabel||"Setor atendido";
 
-const COLS=["configs","clientes","equipamentos","veiculos","preventivas","produtos","ordens","manutencoes","solicitacoesPeca","jornadas","abastecimentos","auditoria","camposTecnicos","tecnicos"];
+const COLS_MEM=["configs","clientes","equipamentos","veiculos","preventivas","produtos","ordens","manutencoes","solicitacoesPeca","jornadas","abastecimentos","auditoria","camposTecnicos","tecnicos"];
 function normalizeDB(){
   if(!DB||typeof DB!=="object")DB=seed();
-  COLS.forEach(k=>{if(!Array.isArray(DB[k]))DB[k]=[];});
+  COLS_MEM.forEach(k=>{if(!Array.isArray(DB[k]))DB[k]=[];});
   DB.schema=1;
-  // migração: técnicos antigos -> usuários com login/senha/papel
-  const usados=new Set();
-  DB.tecnicos.forEach(t=>{
-    if(!t.papel)t.papel=(t.perfil==="admin"?"admin":"tecnico");
-    if(!t.login){let base=(t.nome||"user").trim().toLowerCase().split(/\s+/)[0].replace(/[^a-z0-9]/g,"")||"user";let l=base,n=2;while(usados.has(l)){l=base+n;n++;}t.login=l;}
-    usados.add(t.login);
-    if(!t.senha)t.senha=hashSenha("1234");
-  });
-  // garante SEMPRE uma conta administradora conhecida: admin / admin
-  let adm=DB.tecnicos.find(t=>(t.login||"").toLowerCase()==="admin");
-  if(adm){delete adm.excluido;adm.papel="admin";}
-  else DB.tecnicos.push({id:"tec-admin",nome:"Administrador",login:"admin",senha:hashSenha("admin"),papel:"admin"});
-  // migração: abastecimentos -> despesas com categoria
   DB.abastecimentos.forEach(a=>{if(!a.categoria)a.categoria="combustivel";});
-  // config padrão
-  if(!DB.configs.length)DB.configs=[{id:"main",empresa:"Minha Empresa",equipLabel:"Equipamento",equipLabelPlural:"Equipamentos",setorLabel:"Setor atendido",osExterna:"Bling",medicoes:[]}];
+  if(!DB.configs.length)DB.configs=[{id:"main",empresa:"Minha Empresa",equipLabel:"Equipamento",equipLabelPlural:"Equipamentos",setorLabel:"Setor atendido",osExterna:"",medicoes:[]}];
 }
 
 let DB;
 try{DB=JSON.parse(localStorage.getItem(KEY));}catch(e){DB=null;}
 if(!DB||DB.schema!==1)DB=seed();
 normalizeDB();
-if(VIEWER.userId&&!DB.tecnicos.some(t=>t.id===VIEWER.userId&&!t.excluido)){delete VIEWER.userId;saveViewer();}
 
 /* fotos ficam no dispositivo de quem tirou (não entram na base compartilhada) */
 const FKEY="geracampo_fotos_v1";
@@ -513,76 +508,28 @@ let FOTOS=(()=>{try{return JSON.parse(localStorage.getItem(FKEY))||{};}catch(e){
 function saveFotoLocal(id,data){FOTOS[id]=data;try{localStorage.setItem(FKEY,JSON.stringify(FOTOS));}catch(e){toast("Sem espaço para mais fotos neste dispositivo.");}}
 function getFotoLocal(id){return FOTOS[id];}
 
-/* ---------- sincronização com a base compartilhada ----------
-   Dois back-ends possíveis, escolhidos em tempo de execução:
-   - Supabase (se configurado em Configurações → Conexão) — funciona em qualquer host
-   - capability "db" do claude.ai (quando publicado como Artifact)
-   Sem nenhum dos dois: modo local (localStorage), 1 dispositivo.            */
+/* ========== DADOS — Supabase Auth + tabelas (RLS por empresa) ==========
+   Se não houver conexão com o Supabase (ex.: artifact do claude.ai, offline),
+   o app entra em MODO_DEMO: dados só no navegador, para demonstração.        */
 const LOCALONLY=location.protocol==="file:";
-const SUPAKEY="geracampo_supa_v1";
-function getSupaCfg(){try{return JSON.parse(localStorage.getItem(SUPAKEY))||null;}catch(e){return null;}}
-function setSupaCfg(c){try{c?localStorage.setItem(SUPAKEY,JSON.stringify(c)):localStorage.removeItem(SUPAKEY);}catch(e){}}
-let cloud=null,supa=null,flushT=null,lastLocalWrite=0;
-const dirty=new Set(),lastSent={};
+const TAB={clientes:"clientes",equipamentos:"equipamentos",veiculos:"veiculos",preventivas:"preventivas",
+  produtos:"produtos",ordens:"ordens",manutencoes:"manutencoes",solicitacoesPeca:"solicitacoes_peca",
+  jornadas:"jornadas",abastecimentos:"despesas",camposTecnicos:"campos_tecnicos"};
+const COLS_DADOS=Object.keys(TAB);
+const TAB_INV=Object.fromEntries(Object.entries(TAB).map(([k,v])=>[v,k]));
+let supa=null,flushT=null,lastLocalWrite=0,snap={};
 let SYNC={mode:"conectando",ts:0};
-function backendAtivo(){return cloud?"db":supa?"supabase":null;}
+function backendAtivo(){return (supa&&!MODO_DEMO)?"supabase":null;}
 function persistLocal(){try{localStorage.setItem(KEY,JSON.stringify(DB));}catch(e){}}
 function updateSync(){
   const el=document.getElementById("dbnote");if(!el)return;
   const m=SYNC.mode;
-  if(m==="local")el.textContent="Somente neste dispositivo";
-  else if(m==="conectando")el.textContent="Conectando…";
-  else if(m==="pending")el.textContent="Sincronizando…";
-  else if(m==="err")el.textContent="Sem conexão — dados salvos localmente";
-  else{const t=SYNC.ts?new Date(SYNC.ts).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}):"";el.textContent="Sincronizado ("+(backendAtivo()==="supabase"?"Supabase":"equipe")+")"+(t?" · "+t:"");}
-}
-function trimCol(c,arr){
-  if(c==="auditoria")return arr.slice(0,300);
-  if(c==="manutencoes")return arr.map(m=>({...m,fotos:(m.fotos||[]).map(f=>({id:f.id,grupo:f.grupo,ts:f.ts}))}));
-  if(c==="jornadas")return arr.map(j=>{const o={...j};delete o.fotoPainel;delete o.fotoPainelData;return o;});
-  return arr;
-}
-function persist(){
-  persistLocal();
-  if(!backendAtivo())return;
-  lastLocalWrite=Date.now();SYNC.mode="pending";updateSync();
-  clearTimeout(flushT);flushT=setTimeout(flushRemote,700);
-}
-async function flushRemote(){
-  if(!backendAtivo())return;
-  let ok=true;
-  for(const c of COLS){
-    const body=JSON.stringify(trimCol(c,DB[c]||[]));
-    if(body===lastSent[c])continue;
-    if(body.length>900000){console.warn("Coleção "+c+" muito grande ("+body.length+" B) — mantida só localmente.");ok=false;continue;}
-    try{
-      if(cloud)await cloud.collection("estado").doc(c).set({items:JSON.parse(body),updatedAt:Date.now(),by:tecAtualNome()});
-      else{const{error}=await supa.from("geracampo_estado").upsert({col:c,items:JSON.parse(body),updated_at:new Date().toISOString(),updated_by:tecAtualNome()});if(error)throw error;}
-      lastSent[c]=body;
-    }catch(e){ok=false;dirty.add(c);}
-  }
-  SYNC={mode:ok?"ok":"err",ts:Date.now()};updateSync();
-}
-function posCargaRemota(){
-  const antesTec=JSON.stringify(DB.tecnicos),antesCfg=JSON.stringify(DB.configs);
-  normalizeDB();persistLocal();SYNC={mode:"ok",ts:Date.now()};updateSync();
-  // se a migração criou/ajustou usuários ou config, sincroniza de volta
-  if(JSON.stringify(DB.tecnicos)!==antesTec||JSON.stringify(DB.configs)!==antesCfg)flushRemote();
-  if(VIEWER.userId&&!DB.tecnicos.some(t=>t.id===VIEWER.userId&&!t.excluido)){delete VIEWER.userId;saveViewer();}
-  renderNav();
-  if(autenticado()){esconderLogin();router();}else{mostrarLogin();}
-}
-function aplicarRemoto(c,items,by){
-  const body=JSON.stringify(items||[]);
-  if(body===lastSent[c])return;
-  if(Date.now()-lastLocalWrite<1800)return;
-  lastSent[c]=body;DB[c]=items||[];normalizeDB();persistLocal();
-  SYNC={mode:"ok",ts:Date.now()};updateSync();
-  if(!autenticado()){if($("#login").hidden)mostrarLogin();return;}
-  if(document.getElementById("modalbg"))return;
-  const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return;
-  renderNav();router();
-  if(by&&by!==tecAtualNome())toast("Dados atualizados · "+by);
+  el.textContent = MODO_DEMO ? "Modo demonstração — dados só neste navegador"
+    : m==="conectando" ? "Conectando…"
+    : m==="pending" ? "Salvando…"
+    : m==="err" ? "Erro ao salvar — tente de novo"
+    : m==="offline" ? "Sem internet — alterações pendentes"
+    : "Salvo"+(SYNC.ts?" · "+new Date(SYNC.ts).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}):"");
 }
 function loadSupaLib(){
   return new Promise(res=>{
@@ -594,50 +541,112 @@ function loadSupaLib(){
     document.head.appendChild(s);
   });
 }
-async function initSupabase(cfg){
-  if(!await loadSupaLib()){SYNC.mode="err";updateSync();toast("Não foi possível carregar a biblioteca do Supabase.");return false;}
-  try{
-    supa=window.supabase.createClient(cfg.url,cfg.key,{auth:{persistSession:false}});
-    const{data,error}=await supa.from("geracampo_estado").select("col,items");
-    if(error)throw error;
-    if(data&&data.length){
-      data.forEach(r=>{if(COLS.includes(r.col)){DB[r.col]=r.items||[];lastSent[r.col]=JSON.stringify(r.items||[]);}});
-      posCargaRemota();
-    }else{SYNC={mode:"ok",ts:Date.now()};await flushRemote();}
-    updateSync();
-    supa.channel("geracampo-estado")
-      .on("postgres_changes",{event:"*",schema:"public",table:"geracampo_estado"},p=>{
-        const r=p.new;if(!r||!COLS.includes(r.col))return;
-        aplicarRemoto(r.col,r.items,r.updated_by);
-      }).subscribe();
-    return true;
-  }catch(e){supa=null;SYNC.mode="err";updateSync();toast("Falha ao conectar no Supabase: "+(e.message||e));return false;}
+const linhaParaReg=row=>({...(row.dados||{}),id:row.id});
+const regParaDados=r=>{const{id,...resto}=r;return resto;};
+function carregarSnap(){
+  snap={};
+  for(const c of COLS_DADOS)snap[c]=new Map((DB[c]||[]).map(r=>[r.id,JSON.stringify(r)]));
+  snap.__cfg=JSON.stringify(CFG());
 }
-async function initDbCapability(){
-  if(LOCALONLY||!(window.claude&&claude.use))return false;
-  try{cloud=await claude.use("db");}catch(e){cloud=null;}
-  if(!cloud)return false;
-  try{
-    const snaps=await Promise.all(COLS.map(c=>cloud.collection("estado").doc(c).get().catch(()=>null)));
-    if(snaps.some(s=>s&&s.exists)){
-      snaps.forEach((s,i)=>{const c=COLS[i];if(s&&s.exists){const items=(s.data()||{}).items||[];DB[c]=items;lastSent[c]=JSON.stringify(items);}});
-      posCargaRemota();
-    }else{await flushRemote();}
-    updateSync();
-    COLS.forEach(c=>cloud.collection("estado").doc(c).onSnapshot(s=>{
-      if(!s||!s.exists)return;const d=s.data()||{};aplicarRemoto(c,d.items,d.by);
-    },()=>{SYNC.mode="err";updateSync();}));
-    return true;
-  }catch(e){cloud=null;SYNC.mode="err";updateSync();return false;}
+async function carregarTudo(){
+  const nomes=COLS_DADOS.map(c=>TAB[c]);
+  const res=await Promise.all([
+    ...nomes.map(t=>supa.from(t).select("*")),
+    supa.from("config_empresa").select("dados").maybeSingle(),
+    supa.from("perfis").select("id,nome,papel,ativo"),
+    supa.from("auditoria").select("*").order("ts",{ascending:false}).limit(300)
+  ]);
+  COLS_DADOS.forEach((c,i)=>{const{data,error}=res[i];if(error)throw error;DB[c]=(data||[]).map(linhaParaReg);});
+  const cfg=res[nomes.length].data;
+  DB.configs=[{id:"main",...(cfg&&cfg.dados||{})}];
+  DB.tecnicos=(res[nomes.length+1].data||[]).map(p=>({id:p.id,nome:p.nome,papel:p.papel,excluido:p.ativo?undefined:{}}));
+  DB.auditoria=(res[nomes.length+2].data||[]).map(a=>({id:String(a.id),ts:a.ts,usuario:a.usuario_nome,acao:a.acao,entidade:a.entidade,entidadeId:a.entidade_id,detalhe:a.detalhe}));
+  normalizeDB();persistLocal();carregarSnap();
 }
-async function initRemote(){
-  const cfg=getSupaCfg();
-  if(cfg&&cfg.url&&cfg.key){if(await initSupabase(cfg))return;}
-  if(await initDbCapability())return;
-  SYNC.mode="local";updateSync();
+function persist(){
+  persistLocal();
+  if(MODO_DEMO||!supa||!PERFIL)return;
+  lastLocalWrite=Date.now();SYNC.mode="pending";updateSync();
+  clearTimeout(flushT);flushT=setTimeout(flush,600);
 }
-const auditUser=()=>(usuarioAtual()?usuarioAtual().nome+" ("+perfilNome()+")":perfilNome());
-function audit(acao,entidade,id,detalhe){DB.auditoria.unshift({id:uid("aud"),ts:nowISO(),usuario:auditUser(),acao,entidade,entidadeId:id||"",detalhe:detalhe||""});persist();}
+async function flush(){
+  if(MODO_DEMO||!supa||!PERFIL)return;
+  const emp=PERFIL.empresa_id, jobs=[];
+  for(const c of COLS_DADOS){
+    const tab=TAB[c], agora=new Map((DB[c]||[]).map(r=>[r.id,r]));
+    for(const [id,r] of agora){
+      const j=JSON.stringify(r);
+      if(snap[c]&&snap[c].get(id)===j)continue;
+      jobs.push({t:tab,op:"up",row:{id,empresa_id:emp,dados:regParaDados(r),atualizado_em:nowISO()}});
+    }
+    if(snap[c])for(const id of snap[c].keys())if(!agora.has(id))jobs.push({t:tab,op:"del",id});
+  }
+  if(JSON.stringify(CFG())!==snap.__cfg)
+    jobs.push({t:"config_empresa",op:"cfg",row:{empresa_id:emp,dados:{...CFG()},atualizado_em:nowISO()}});
+  const novosAud=DB.auditoria.filter(a=>a._novo);
+  if(!jobs.length&&!novosAud.length){SYNC.mode="ok";SYNC.ts=Date.now();updateSync();return;}
+  let erro=null;
+  for(const jb of jobs){
+    let r;
+    if(jb.op==="del")r=await supa.from(jb.t).delete().eq("id",jb.id);
+    else if(jb.op==="cfg")r=await supa.from(jb.t).upsert(jb.row,{onConflict:"empresa_id"});
+    else r=await supa.from(jb.t).upsert(jb.row);
+    if(r&&r.error){erro=r.error;break;}
+  }
+  for(const a of novosAud){
+    const r=await supa.from("auditoria").insert({empresa_id:emp,usuario_id:PERFIL.id,usuario_nome:a.usuario,acao:a.acao,entidade:a.entidade,entidade_id:a.entidadeId,detalhe:a.detalhe});
+    if(!r.error)delete a._novo;
+  }
+  if(erro){
+    console.warn("flush erro:",erro);
+    SYNC.mode="err";updateSync();
+    toast(/policy|permission|denied|row-level/i.test(erro.message||"")?"Sem permissão para essa alteração.":"Erro ao salvar: "+(erro.message||erro));
+    try{await carregarTudo();renderNav();router();}catch(e){}
+    return;
+  }
+  SYNC.mode="ok";SYNC.ts=Date.now();updateSync();carregarSnap();
+}
+function rerenderRT(){
+  SYNC.mode="ok";SYNC.ts=Date.now();updateSync();
+  if(document.getElementById("modalbg"))return;
+  const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return;
+  renderNav();router();
+}
+function aplicarRT(c,p){
+  if(Date.now()-lastLocalWrite<2000)return;
+  DB[c]=DB[c]||[];
+  if(p.eventType==="DELETE"){const id=(p.old||{}).id;DB[c]=DB[c].filter(r=>r.id!==id);if(snap[c])snap[c].delete(id);}
+  else{const rec=linhaParaReg(p.new);const i=DB[c].findIndex(r=>r.id===rec.id);if(i>=0)DB[c][i]=rec;else DB[c].unshift(rec);if(snap[c])snap[c].set(rec.id,JSON.stringify(rec));}
+  persistLocal();rerenderRT();
+}
+function assinarRealtime(){
+  const ch=supa.channel("gc-"+Math.random().toString(36).slice(2));
+  for(const c of COLS_DADOS)
+    ch.on("postgres_changes",{event:"*",schema:"public",table:TAB[c]},p=>aplicarRT(c,p));
+  ch.on("postgres_changes",{event:"*",schema:"public",table:"config_empresa"},p=>{
+    if(p.new&&p.new.dados){DB.configs=[{id:"main",...p.new.dados}];snap.__cfg=JSON.stringify(CFG());rerenderRT();}
+  });
+  ch.on("postgres_changes",{event:"*",schema:"public",table:"perfis"},()=>{
+    supa.from("perfis").select("id,nome,papel,ativo").then(({data})=>{
+      if(!data)return;
+      DB.tecnicos=data.map(x=>({id:x.id,nome:x.nome,papel:x.papel,excluido:x.ativo?undefined:{}}));
+      const meu=data.find(x=>x.id===PERFIL.id);
+      if(meu){if(!meu.ativo){logout();return;}PERFIL.nome=meu.nome;PERFIL.papel=meu.papel;}
+      rerenderRT();
+    });
+  });
+  ch.on("postgres_changes",{event:"INSERT",schema:"public",table:"auditoria"},p=>{
+    const a=p.new;if(a&&!DB.auditoria.some(x=>x.id===String(a.id)))
+      DB.auditoria.unshift({id:String(a.id),ts:a.ts,usuario:a.usuario_nome,acao:a.acao,entidade:a.entidade,entidadeId:a.entidade_id,detalhe:a.detalhe});
+  });
+  ch.subscribe();
+}
+const auditUser=()=>(PERFIL?PERFIL.nome+" ("+perfilNome()+")":perfilNome());
+function audit(acao,entidade,id,detalhe){
+  DB.auditoria.unshift({id:uid("aud"),ts:nowISO(),usuario:auditUser(),acao,entidade,entidadeId:id||"",detalhe:detalhe||"",_novo:!MODO_DEMO});
+  DB.auditoria=DB.auditoria.slice(0,400);
+  persist();
+}
 
 /* ---------- helpers de domínio ---------- */
 const byId=(arr,id)=>DB[arr].find(x=>x.id===id);
@@ -762,37 +771,69 @@ function renderRole(){ // atualiza o chip do usuário logado + identidade
   updateSync();
 }
 /* ---------- login ---------- */
-function autenticado(){return !!usuarioAtual();}
-function mostrarLogin(){
+function autenticado(){return !!PERFIL;}
+function mostrarLogin(motivo){
   $("#loginErr").hidden=true;$("#loginPass").value="";
-  $("#loginUser").value="";
-  $("#loginTitle").textContent=CFG().empresa&&CFG().empresa!=="Minha Empresa"?CFG().empresa:"GeraCampo";
-  const admPadrao=DB.tecnicos.some(t=>t.login==="admin"&&t.senha===hashSenha("admin")&&!t.excluido);
-  const logins=DB.tecnicos.filter(t=>!t.excluido).map(t=>t.login).join(", ");
-  $("#loginHint").innerHTML=admPadrao
-    ? `Não há tela de cadastro: use <b>admin</b> / senha <b>admin</b> e crie os usuários em Configurações.`
-    : `Não há tela de cadastro. Entre com um usuário existente (${esc(logins||"—")}) e sua senha. Sem acesso? Restaure a base de teste na tela anterior ou peça a senha ao administrador.`;
+  $("#loginTitle").textContent=(CFG().empresa&&CFG().empresa!=="Minha Empresa")?CFG().empresa:"GeraCampo";
+  if(MODO_DEMO){
+    $("#loginSub").textContent="Modo demonstração";
+    $("#loginFields").hidden=true;$("#loginBtn").hidden=true;$("#loginDemo").hidden=false;
+    $("#loginHint").textContent=(motivo?motivo+" ":"")+"Sem servidor — dados só neste navegador, para demonstração.";
+  }else{
+    $("#loginSub").textContent="Entre com seu e-mail e senha";
+    $("#loginFields").hidden=false;$("#loginBtn").hidden=false;$("#loginDemo").hidden=true;
+    $("#loginHint").textContent=motivo||"Não há tela de cadastro — o administrador cria os usuários no painel do Supabase (Authentication → Add user).";
+    setTimeout(()=>$("#loginUser").focus(),50);
+  }
   $("#loginHint").hidden=false;
   document.documentElement.setAttribute("data-hidden-app","");
   $("#login").hidden=false;
-  setTimeout(()=>$("#loginUser").focus(),50);
 }
 function esconderLogin(){$("#login").hidden=true;document.documentElement.removeAttribute("data-hidden-app");}
-function fazerLogin(){
-  const l=$("#loginUser").value.trim().toLowerCase();
-  const s=$("#loginPass").value;
-  const u=DB.tecnicos.find(t=>!t.excluido&&(t.login||"").toLowerCase()===l);
-  if(!u||u.senha!==hashSenha(s)){$("#loginErr").textContent="Usuário ou senha incorretos.";$("#loginErr").hidden=false;return;}
-  VIEWER.userId=u.id;saveViewer();
-  esconderLogin();
-  renderNav();renderRole();
-  location.hash="#/painel";router();
-  toast("Bem-vindo, "+u.nome.split(/\s+/)[0]+".");
+async function fazerLogin(){
+  if(MODO_DEMO)return;
+  const email=$("#loginUser").value.trim(), pass=$("#loginPass").value;
+  if(!email||!pass){$("#loginErr").textContent="Informe e-mail e senha.";$("#loginErr").hidden=false;return;}
+  const btn=$("#loginBtn");btn.disabled=true;btn.textContent="Entrando…";
+  let r;
+  try{ r=await supa.auth.signInWithPassword({email,password:pass}); }
+  catch(e){ r={error:{message:String(e)}}; }
+  btn.disabled=false;btn.textContent="Entrar";
+  if(r.error){
+    $("#loginErr").textContent=/Invalid login|credenc/i.test(r.error.message)?"E-mail ou senha incorretos.":(r.error.message||"Falha no login.");
+    $("#loginErr").hidden=false;return;
+  }
+  try{ await entrar(r.data.session); }
+  catch(e){ $("#loginErr").textContent="Erro ao carregar dados: "+(e.message||e);$("#loginErr").hidden=false; }
 }
-function logout(){
-  audit("Logout","Sessão",VIEWER.userId||"","");
-  delete VIEWER.userId;saveViewer();
+function demoEntrar(papel){
+  PERFIL={id:"demo",nome:papel==="admin"?"Administrador (demo)":"Técnico (demo)",papel,empresa_id:"demo"};
+  VIEWER.userId="demo";
+  if(!DB.tecnicos.some(t=>t.id==="demo"))DB.tecnicos.unshift({id:"demo",nome:PERFIL.nome,papel});
+  esconderLogin();renderNav();renderRole();location.hash="#/painel";router();
+}
+async function entrar(session){
+  const {data:p,error}=await supa.from("perfis").select("*").eq("id",session.user.id).maybeSingle();
+  if(error)throw error;
+  if(!p){toast("Seu perfil ainda não foi criado. Avise o administrador.");await supa.auth.signOut();return mostrarLogin("Perfil não encontrado. Peça ao administrador.");}
+  if(!p.ativo){await supa.auth.signOut();return mostrarLogin("Seu acesso está inativo.");}
+  PERFIL={...p,email:session.user.email};VIEWER.userId=p.id;saveViewer();
+  SYNC.mode="conectando";updateSync();
+  await carregarTudo();
+  esconderLogin();renderNav();renderRole();
+  if(!location.hash||location.hash==="#/"||location.hash==="#/mais")location.hash="#/painel";
+  router();
+  assinarRealtime();
+  SYNC.mode="ok";SYNC.ts=Date.now();updateSync();
+  toast("Bem-vindo, "+p.nome.split(/\s+/)[0]+".");
+}
+async function logout(){
   closeModal();
+  if(MODO_DEMO){PERFIL=null;VIEWER.userId=null;return mostrarLogin();}
+  audit("Logout","Sessão",PERFIL?.id||"","");
+  try{await flush();}catch(e){}
+  try{await supa.auth.signOut();}catch(e){}
+  PERFIL=null;
   mostrarLogin();
 }
 function contaSheet(){
@@ -800,26 +841,28 @@ function contaSheet(){
   modal({title:"Conta",body:`
     <div class="item" style="border:1px solid var(--line);border-radius:var(--radius);min-height:0;padding:12px;margin-bottom:12px">
       <span class="avatar">${esc(iniciais(u?.nome))}</span>
-      <div><div class="t">${esc(u?.nome||"—")}</div><div class="d">${esc(perfilNome())} · usuário <b>${esc(u?.login||"")}</b></div></div>
+      <div><div class="t">${esc(u?.nome||"—")}</div><div class="d">${esc(perfilNome())}${u?.email?" · "+esc(u.email):""}</div></div>
     </div>
     ${jornadaAberta()?`<div class="alertbox" style="margin-bottom:12px"><span>▶</span><div>Você tem uma jornada aberta. Encerre antes de sair, se for troca de turno.</div></div>`:""}
-    <button class="btn" id="cSenha" style="width:100%;margin-bottom:8px">Alterar minha senha</button>
-    <button class="btn danger" id="cSair" style="width:100%">Sair (trocar de usuário)</button>`,
+    ${MODO_DEMO?'<div class="alertbox info" style="margin-bottom:12px"><span>ℹ</span><div>Modo demonstração — sem servidor.</div></div>':`<button class="btn" id="cSenha" style="width:100%;margin-bottom:8px">Alterar minha senha</button>`}
+    <button class="btn danger" id="cSair" style="width:100%">Sair</button>`,
     footer:`<button class="btn" onclick="closeModal()">Fechar</button>`});
   $("#cSair").onclick=logout;
-  $("#cSenha").onclick=()=>{closeModal();trocarSenha(u);};
+  if($("#cSenha"))$("#cSenha").onclick=()=>{closeModal();trocarSenha();};
 }
-function trocarSenha(u){
+function trocarSenha(){
   modal({title:"Alterar senha",body:`<div class="stack">
-    <label class="f">Senha atual<input id="s0" type="password"></label>
-    <label class="f">Nova senha<input id="s1" type="password"></label>
-    <label class="f">Repetir nova senha<input id="s2" type="password"></label>
-  </div>`,footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="sok">Salvar</button>`});
-  $("#sok").onclick=()=>{
-    if(u.senha!==hashSenha($("#s0").value))return toast("Senha atual incorreta.");
-    const n=$("#s1").value;if(n.length<4)return toast("Use ao menos 4 caracteres.");
+    <label class="f">Nova senha<input id="s1" type="password" autocomplete="new-password"></label>
+    <label class="f">Repetir nova senha<input id="s2" type="password" autocomplete="new-password"></label>
+  </div><p class="small muted" style="margin:6px 0 0">Mínimo 6 caracteres.</p>`,
+  footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="sok">Salvar</button>`});
+  $("#sok").onclick=async()=>{
+    const n=$("#s1").value;if((n||"").length<6)return toast("Mínimo 6 caracteres.");
     if(n!==$("#s2").value)return toast("As senhas não conferem.");
-    u.senha=hashSenha(n);audit("Senha","Usuário",u.id,"alteração de senha");persist();closeModal();toast("Senha alterada.");
+    const {error}=await supa.auth.updateUser({password:n});
+    if(error)return toast(error.message||"Erro ao alterar.");
+    audit("Senha","Usuário",PERFIL.id,"alteração da própria senha");
+    closeModal();toast("Senha alterada.");
   };
 }
 
@@ -884,7 +927,7 @@ ROUTES.mais=(v)=>{
     <h3 style="margin-bottom:10px">Você</h3>
     <div class="item" style="border:1px solid var(--line);border-radius:var(--radius);min-height:0;padding:12px">
       <span class="avatar">${esc(iniciais(u?.nome))}</span>
-      <div><div class="t">${esc(u?.nome||"—")}</div><div class="d">${esc(perfilNome())} · login <b>${esc(u?.login||"")}</b></div></div>
+      <div><div class="t">${esc(u?.nome||"—")}</div><div class="d">${esc(perfilNome())}${u?.email?" · "+esc(u.email):""}</div></div>
       <span class="sp"></span>
       <button class="btn sm" id="mconta">Conta</button>
     </div>
@@ -2294,33 +2337,37 @@ ROUTES.fluxo=(v)=>{
 };
 
 function usuarioModal(t){
-  const novo=!t;
-  modal({title:novo?"Novo usuário":"Editar usuário",body:`<div class="stack">
-    <label class="f">Nome <span class="rq">*</span><input id="tn" value="${esc(t?.nome||"")}"></label>
-    <label class="f">Usuário (login) <span class="rq">*</span><input id="tl" autocapitalize="none" spellcheck="false" value="${esc(t?.login||"")}"></label>
-    <label class="f">Nível de acesso<select id="tp">${Object.entries(PAPEIS).map(([k,x])=>`<option value="${k}"${(t?t.papel:"tecnico")===k?" selected":""}>${x.nome}</option>`).join("")}</select></label>
-    <p class="small muted" style="margin:0">${esc(PAPEIS.tecnico.d)}</p>
-    <label class="f">${novo?"Senha":"Nova senha (deixe em branco p/ manter)"} ${novo?'<span class="rq">*</span>':""}<input id="ts" type="password" placeholder="${novo?"mínimo 4 caracteres":"•••• (manter)"}"></label>
-  </div>`,footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="oktec">Salvar</button>`});
-  $("#oktec").onclick=()=>{
-    const nome=$("#tn").value.trim();if(!nome)return toast("Informe o nome.");
-    const login=$("#tl").value.trim().toLowerCase();if(!login)return toast("Informe o usuário (login).");
-    if(DB.tecnicos.some(x=>x.id!==(t&&t.id)&&!x.excluido&&(x.login||"").toLowerCase()===login))return toast("Já existe um usuário com esse login.");
-    const papel=$("#tp").value,senha=$("#ts").value;
-    if(novo&&senha.length<4)return toast("Senha de ao menos 4 caracteres.");
-    if(senha&&senha.length<4)return toast("Senha de ao menos 4 caracteres.");
-    if(t){
-      const eraAdmin=t.papel==="admin";
-      t.nome=nome;t.login=login;t.papel=papel;if(senha)t.senha=hashSenha(senha);
-      if(eraAdmin&&papel!=="admin"&&!DB.tecnicos.some(x=>x.papel==="admin"&&!x.excluido&&x.id!==t.id))return toast("Deve haver ao menos um administrador.");
-      audit("Edição","Usuário",t.id,nome);
-    }else{
-      const n={id:uid("tec"),nome,login,papel,senha:hashSenha(senha)};DB.tecnicos.push(n);audit("Criação","Usuário",n.id,nome);
-    }
-    persist();closeModal();toast("Usuário salvo.");router();
+  if(MODO_DEMO)return toast("Indisponível no modo demonstração.");
+  if(!t){
+    modal({title:"Adicionar usuário",body:`
+      <p class="small">Para adicionar alguém à equipe:</p>
+      <ol class="small" style="line-height:1.9;padding-left:18px;margin:6px 0">
+        <li>No painel do <b>Supabase</b> → <b>Authentication → Users → Add user</b></li>
+        <li>Informe o e-mail e uma senha e marque <b>Auto Confirm User</b></li>
+        <li>Volte aqui — a pessoa aparece na lista abaixo e você define o <b>nome</b> e o <b>nível de acesso</b></li>
+      </ol>
+      <p class="small muted" style="margin:0">Assim ninguém precisa receber e-mail de confirmação. Em breve dará para criar direto por aqui.</p>`,
+      footer:`<button class="btn primary" onclick="closeModal()">Entendi</button>`});
+    return;
+  }
+  modal({title:"Editar usuário",body:`<div class="stack">
+    <label class="f">Nome <span class="rq">*</span><input id="un" value="${esc(t.nome||"")}"></label>
+    <label class="f">Nível de acesso<select id="up">${Object.entries(PAPEIS).map(([k,x])=>`<option value="${k}"${t.papel===k?" selected":""}>${x.nome}</option>`).join("")}</select></label>
+    <p class="small muted" style="margin:0">${esc(PAPEIS[t.papel==="admin"?"admin":"tecnico"].d)}</p>
+    <label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="ua" style="width:auto" ${!t.excluido?"checked":""}> Acesso ativo</label>
+  </div>`,footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="uok">Salvar</button>`});
+  $("#uok").onclick=async()=>{
+    const nome=$("#un").value.trim();if(!nome)return toast("Informe o nome.");
+    const papel=$("#up").value, ativo=$("#ua").checked;
+    if(t.id===PERFIL.id&&(!ativo||papel!=="admin"))return toast("Você não pode tirar o próprio acesso de administrador.");
+    if(t.papel==="admin"&&papel!=="admin"&&DB.tecnicos.filter(x=>x.papel==="admin"&&!x.excluido).length<=1)return toast("Deve haver ao menos um administrador.");
+    const {error}=await supa.from("perfis").update({nome,papel,ativo}).eq("id",t.id);
+    if(error)return toast(/policy|permission|row-level/i.test(error.message)?"Só administrador altera usuários.":(error.message||"Erro."));
+    t.nome=nome;t.papel=papel;t.excluido=ativo?undefined:{};
+    audit("Edição","Usuário",t.id,nome);persist();
+    closeModal();toast("Usuário salvo.");router();
   };
 }
-const tecnicoModal=usuarioModal;
 
 /* ============ CONFIGURAÇÕES ============ */
 ROUTES.config=(v)=>{
@@ -2348,72 +2395,29 @@ ROUTES.config=(v)=>{
     <div class="list">${(c.medicoes||[]).map((m,ix)=>`<div class="item"><div class="t">${esc(m)}</div><span class="sp"></span>${can("editar")?`<button class="btn sm danger" data-rmmed="${ix}">Remover</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhum campo de medição. O técnico ainda pode anotar em Observações.</div>'}</div>
   </div>
 
-  <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Usuários e acesso</h3>${can("criar")?`<button class="btn sm" id="addTec">+ Usuário</button>`:""}</div>
-    <div class="list">${DB.tecnicos.filter(ativo).map(t=>`<div class="item"><span class="avatar">${esc(iniciais(t.nome))}</span>
-      <div><div class="t">${esc(t.nome)} ${t.id===VIEWER.userId?'<span class="pill accent">você</span>':""}</div><div class="d">${esc(PAPEIS[t.papel]?.nome||t.papel)} · login <b>${esc(t.login||"—")}</b></div></div><span class="sp"></span>
-      ${can("editar")?`<button class="btn sm" data-edtec="${t.id}">Editar</button>`:""}${can("excluir")?`<button class="btn sm danger" data-rmtec="${t.id}">Excluir</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhum usuário.</div>'}</div>
+  <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Usuários e acesso</h3>${ehAdmin()?`<button class="btn sm" id="addTec">+ Usuário</button>`:""}</div>
+    <div class="list">${DB.tecnicos.map(t=>`<div class="item"><span class="avatar">${esc(iniciais(t.nome))}</span>
+      <div><div class="t">${esc(t.nome)} ${t.id===PERFIL?.id?'<span class="pill accent">você</span>':""}${t.excluido?' <span class="pill">inativo</span>':""}</div><div class="d">${esc(PAPEIS[t.papel]?.nome||t.papel)}</div></div><span class="sp"></span>
+      ${ehAdmin()?`<button class="btn sm" data-edtec="${t.id}">Editar</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhum usuário.</div>'}</div>
   </div>
 
-  <div class="detailgrid two">
-    <div class="card pad"><h3 style="margin-bottom:8px">Técnico ativo neste aparelho (jornada)</h3>
-      <label class="f">Usado ao iniciar jornada
-        <select id="tecAtual">${DB.tecnicos.filter(ativo).map(t=>`<option value="${t.id}"${t.id===VIEWER.userId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
-      <p class="small muted" style="margin-top:8px">Normalmente é você mesmo (usuário logado).</p>
-    </div>
-    <div class="card pad"><h3 style="margin-bottom:8px">Base de dados</h3>
-      <p class="small" id="syncinfo" style="margin:0 0 6px"></p>
-      <p class="small muted">Base de teste com registros fictícios (NS TESTE-001/002/003). Perfil e técnico ativo são escolhidos por dispositivo e não sincronizam.</p>
-      <div class="actionbar" style="margin-top:12px">
-        <button class="btn sm" id="export">Exportar JSON</button>
-        <button class="btn sm danger" id="reset">Restaurar base de teste</button>
-      </div>
-    </div>
-  </div>
-  <div class="panel" style="margin-top:16px"><div class="ph"><h3>Conexão com Supabase (opcional)</h3><span class="small muted" id="supastatus"></span></div>
-    <div class="pb" style="padding:16px">
-      <p class="small muted" style="margin:0 0 12px">Liga o app a um projeto Supabase para os dados serem compartilhados em tempo real entre todos que abrem o link — em qualquer host (GitHub Pages, etc.), sem login. As chaves ficam só neste navegador; não vão para o GitHub. A chave <b>publishable / anon</b> é pública por natureza — use apenas para testes fechados.</p>
-      <div class="formgrid">
-        <label class="f full">URL do projeto<input id="supaurl" placeholder="https://xxxxxxxx.supabase.co"></label>
-        <label class="f full">Chave publishable (ou anon)<input id="supakey" placeholder="sb_publishable_...  ou  eyJhbGciOi..."></label>
-      </div>
-      <div class="actionbar" style="margin-top:12px">
-        <button class="btn primary" id="supaconnect">Conectar e recarregar</button>
-        <button class="btn danger" id="supadisc">Desconectar</button>
-      </div>
-      <p class="small muted" style="margin:12px 0 0">SQL para criar a tabela (rode uma vez no <i>SQL Editor</i> do Supabase):</p>
-      <pre style="background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px;font-size:11px;overflow-x:auto;white-space:pre">create table geracampo_estado (
-  col text primary key,
-  items jsonb not null default '[]',
-  updated_at timestamptz default now(),
-  updated_by text
-);
-alter table geracampo_estado enable row level security;
-create policy "acesso de teste" on geracampo_estado
-  for all using (true) with check (true);
-grant all on table geracampo_estado to anon, authenticated;
-alter publication supabase_realtime add table geracampo_estado;</pre>
+  <div class="card pad" style="margin-bottom:16px"><h3 style="margin-bottom:8px">Segurança e dados</h3>
+    <p class="small" id="syncinfo" style="margin:0 0 6px"></p>
+    <ul class="small muted" style="line-height:1.8;margin:6px 0 0;padding-left:18px">
+      <li>Login pelo Supabase Auth; cada empresa só enxerga os próprios dados (RLS).</li>
+      <li>Apagar OS e ${esc(eqLabel().toLowerCase())}/NS: só administrador.</li>
+      <li>Backup automático diário no Supabase (tabela <span class="mono">backup_diario</span>).</li>
+      <li>Fotos ficam no aparelho de quem tira (não sincronizam).</li>
+    </ul>
+    <div class="actionbar" style="margin-top:12px">
+      <button class="btn sm" id="export">Exportar tudo (JSON)</button>
     </div>
   </div>`;
   const si=v.querySelector("#syncinfo");
-  si.innerHTML=backendAtivo()==="supabase"?`<b style="color:var(--good)">Supabase conectado.</b> Dados compartilhados em tempo real${SYNC.ts?" · "+fmtTime(SYNC.ts):""}. As fotos ficam no aparelho de quem as tira.`
-    :cloud?`<b style="color:var(--good)">Base compartilhada (claude.ai) ativa.</b> ${SYNC.ts?"última sincronização "+fmtTime(SYNC.ts):""}`
-    :LOCALONLY?"Arquivo local — dados só neste navegador."
+  si.innerHTML=MODO_DEMO?'<b>Modo demonstração</b> — dados só neste navegador.'
     :SYNC.mode==="conectando"?"Conectando…"
-    :"Sem base compartilhada — dados só neste navegador. Configure o Supabase abaixo para compartilhar.";
-  const cfg=getSupaCfg();
-  if(cfg){v.querySelector("#supaurl").value=cfg.url||"";v.querySelector("#supakey").value=cfg.key||"";}
-  v.querySelector("#supastatus").textContent=supa?"conectado":cfg?"configurado":"não configurado";
-  v.querySelector("#supaconnect").onclick=()=>{
-    let url=v.querySelector("#supaurl").value.trim();
-    const key=v.querySelector("#supakey").value.trim();
-    const mm=url.match(/https:\/\/[a-z0-9-]+\.supabase\.co/i);
-    if(mm)url=mm[0];else return toast("URL inválida — use https://xxxx.supabase.co (sem /rest/v1).");
-    if(key.length<20)return toast("Cole a chave completa (sb_publishable_... ou eyJ...).");
-    setSupaCfg({url,key});toast("Conectando ao Supabase…");setTimeout(()=>location.reload(),400);
-  };
-  v.querySelector("#supadisc").onclick=()=>{if(confirm("Desconectar do Supabase? O app volta ao modo local neste dispositivo (os dados permanecem no Supabase)."))
-    {setSupaCfg(null);setTimeout(()=>location.reload(),200);}};
-  v.querySelector("#tecAtual").onchange=e=>{VIEWER.userId=e.target.value;saveViewer();renderRole();toast("Técnico da jornada: "+(byId("tecnicos",e.target.value)||{}).nome);};
+    :SYNC.mode==="err"?'<b style="color:var(--crit)">Erro de sincronização</b> — verifique a conexão.'
+    :`<b style="color:var(--good)">Conectado ao Supabase.</b> Sincronizado em tempo real${SYNC.ts?" · "+fmtTime(SYNC.ts):""}.`;
   v.querySelector("#cSalvar")&&(v.querySelector("#cSalvar").onclick=()=>{
     const cc=CFG();
     cc.empresa=v.querySelector("#cEmpresa").value.trim()||"Minha Empresa";
@@ -2440,21 +2444,18 @@ alter publication supabase_realtime add table geracampo_estado;</pre>
   v.querySelectorAll("[data-rmct]").forEach(b=>b.onclick=()=>{const c=byId("camposTecnicos",b.dataset.rmct);c.excluido={ts:nowISO(),usuario:auditUser(),motivo:"removido em configurações"};audit("Exclusão","Campo técnico",c.id);persist();router();});
   v.querySelector("#addTec")&&(v.querySelector("#addTec").onclick=()=>usuarioModal(null));
   v.querySelectorAll("[data-edtec]").forEach(b=>b.onclick=()=>usuarioModal(byId("tecnicos",b.dataset.edtec)));
-  v.querySelectorAll("[data-rmtec]").forEach(b=>b.onclick=()=>{
-    const alvo=byId("tecnicos",b.dataset.rmtec);
-    if(alvo&&alvo.id===VIEWER.userId)return toast("Você não pode excluir o próprio usuário logado.");
-    if(alvo&&alvo.papel==="admin"&&DB.tecnicos.filter(t=>t.papel==="admin"&&!t.excluido).length<=1)return toast("Deve haver ao menos um administrador.");
-    if(DB.tecnicos.filter(ativo).length<=1)return toast("Deixe ao menos um usuário ativo.");
-    excluir("tecnicos",b.dataset.rmtec,"Usuário",()=>router());
-  });
-  v.querySelector("#export").onclick=()=>{toast("JSON no console.");console.log(JSON.stringify(DB,null,2));};
-  v.querySelector("#reset").onclick=()=>{if(confirm(backendAtivo()?"Restaurar a base de teste? Isso substitui os dados de TODOS que usam o link.":"Restaurar a base de teste? Os dados atuais serão perdidos."))
-    {DB=seed();normalizeDB();audit("Restauração","Base de teste","");persist();toast("Base restaurada.");location.hash="#/painel";router();}};
+  v.querySelector("#export").onclick=()=>{
+    const txt=JSON.stringify(DB,null,2);
+    modal({title:"Exportar dados",wide:true,body:`<p class="small muted">Cópia completa em JSON. Copie e guarde.</p>
+      <textarea readonly style="min-height:260px;font-family:var(--mono);font-size:11px">${esc(txt)}</textarea>`,
+      footer:`<button class="btn" onclick="closeModal()">Fechar</button><button class="btn primary" id="expcp">Copiar</button>`});
+    $("#expcp").onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(txt).catch(()=>{});const ta=document.querySelector(".modal textarea");ta.select();try{document.execCommand("copy");}catch(e){}toast("Copiado.");};
+  };
 };
 
 /* ============ AUDITORIA ============ */
 ROUTES.auditoria=(v)=>{
-  const excl=[];["clientes","equipamentos","veiculos","tecnicos","produtos","ordens","manutencoes","preventivas","abastecimentos","jornadas","solicitacoesPeca","camposTecnicos"].forEach(a=>DB[a].filter(x=>x.excluido).forEach(x=>excl.push({a,x})));
+  const excl=[];["clientes","equipamentos","veiculos","produtos","ordens","manutencoes","preventivas","abastecimentos","jornadas","solicitacoesPeca","camposTecnicos"].forEach(a=>DB[a].filter(x=>x.excluido).forEach(x=>excl.push({a,x})));
   v.innerHTML=`<div class="pagehead"><h1>Auditoria</h1><p>Toda exclusão administrativa registra usuário, data/hora e motivo. Preferência por exclusão lógica em vez de apagar históricos.</p></div>
   <div class="detailgrid two">
     <div class="panel"><div class="ph"><h3>Trilha de auditoria</h3><span class="small muted">${DB.auditoria.length} evento(s)</span></div>
@@ -2503,10 +2504,11 @@ function installPWA(){
 
 /* ---------- boot ---------- */
 installPWA();
-renderNav();renderTabs();renderRole();
+renderNav();renderTabs();
 $("#userbtn").onclick=()=>contaSheet();
 $("#backbtn").onclick=()=>{if(history.length>1)history.back();else location.hash="#/mais";};
 $("#loginform").addEventListener("submit",e=>{e.preventDefault();fazerLogin();});
+document.querySelectorAll("#loginDemo [data-demo]").forEach(b=>b.onclick=()=>demoEntrar(b.dataset.demo));
 const THEMEKEY="geracampo_theme";
 try{const t=localStorage.getItem(THEMEKEY);if(t)document.documentElement.dataset.theme=t;}catch(e){}
 function applyThemeColor(){
@@ -2520,6 +2522,31 @@ $("#themebtn").onclick=()=>{
   document.documentElement.dataset.theme=nxt;try{localStorage.setItem(THEMEKEY,nxt);}catch(e){}
   applyThemeColor();
 };
-if(autenticado()){router();}else{mostrarLogin();}
-initRemote();
+
+async function boot(){
+  document.documentElement.setAttribute("data-hidden-app","");   // esconde o app até resolver a sessão
+  const libOk=await loadSupaLib();
+  if(!libOk){ MODO_DEMO=true; return mostrarLogin("Não foi possível carregar a biblioteca."); }
+  try{
+    supa=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+  }catch(e){ MODO_DEMO=true; return mostrarLogin("Falha ao iniciar o Supabase."); }
+  supa.auth.onAuthStateChange(ev=>{ if(ev==="SIGNED_OUT"&&PERFIL){ PERFIL=null; mostrarLogin(); } });
+  let session=null;
+  try{ session=(await supa.auth.getSession()).data.session; }catch(e){}
+  if(session){
+    try{ await entrar(session); return; }
+    catch(e){ console.warn("sessão inválida:",e); }
+  }
+  // sem sessão — testa se o servidor responde (senão, MODO_DEMO)
+  try{
+    const {error}=await supa.from("empresas").select("id").limit(1);
+    if(error && /Failed to fetch|NetworkError|ERR_|blocked/i.test((error.message||"")+(error.details||""))){
+      MODO_DEMO=true; return mostrarLogin("Sem conexão com o servidor.");
+    }
+  }catch(e){
+    MODO_DEMO=true; return mostrarLogin("Sem conexão com o servidor.");
+  }
+  mostrarLogin();
+}
+boot();
 </script>
