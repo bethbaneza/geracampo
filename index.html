@@ -1,12 +1,12 @@
-<title>GeraCampo</title>
-<meta name="description" content="App técnico de manutenção de geradores de cloro, jornada, veículos e estoque, integrado ao Bling.">
+<title>Banheza Assist</title>
+<meta name="description" content="Banheza Assist — app de assistência técnica e manutenção de campo: ordens de serviço, jornada, veículos e estoque.">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0e7490">
 <meta name="color-scheme" content="light dark">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="GeraCampo">
+<meta name="apple-mobile-web-app-title" content="Banheza Assist">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -291,7 +291,7 @@ input[type=checkbox]{min-height:0}
       <div class="mark" aria-hidden="true">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8Z"/></svg>
       </div>
-      <div><b>GeraCampo</b><span>Manutenção &amp; campo</span></div>
+      <div><b>Banheza Assist</b><span>Manutenção &amp; campo</span></div>
     </div>
     <nav class="nav" id="nav"></nav>
     <div class="foot"><span id="footco"></span><br><span id="dbnote"></span></div>
@@ -319,7 +319,7 @@ input[type=checkbox]{min-height:0}
     <div class="loginmark">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8Z"/></svg>
     </div>
-    <h1 id="loginTitle">GeraCampo</h1>
+    <h1 id="loginTitle">Banheza Assist</h1>
     <p class="muted small" id="loginSub">Entre com seu e-mail e senha</p>
     <div id="loginFields">
       <label class="f">E-mail<input id="loginUser" type="email" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
@@ -767,7 +767,7 @@ function renderRole(){ // atualiza o chip do usuário logado + identidade
   $("#uav").textContent=iniciais(nome);
   $("#uname").textContent=(nome.split(/\s+/)[0]||"—");
   $("#userbtn").title=nome+" · "+perfilNome();
-  const co=$("#footco");if(co)co.textContent=(CFG().empresa||"GeraCampo")+(CFG().osExterna?" · OS no "+CFG().osExterna:"");
+  const co=$("#footco");if(co)co.textContent=(CFG().empresa||"Banheza Assist")+(CFG().osExterna?" · OS no "+CFG().osExterna:"");
   const bt=document.querySelector(".brand span");if(bt&&CFG().empresa&&CFG().empresa!=="Minha Empresa")bt.textContent=CFG().empresa;
   updateSync();
 }
@@ -775,7 +775,7 @@ function renderRole(){ // atualiza o chip do usuário logado + identidade
 function autenticado(){return !!PERFIL;}
 function mostrarLogin(motivo){
   $("#loginErr").hidden=true;$("#loginPass").value="";
-  $("#loginTitle").textContent=(CFG().empresa&&CFG().empresa!=="Minha Empresa")?CFG().empresa:"GeraCampo";
+  $("#loginTitle").textContent=(CFG().empresa&&CFG().empresa!=="Minha Empresa")?CFG().empresa:"Banheza Assist";
   if(MODO_DEMO){
     $("#loginSub").textContent="Modo demonstração";
     $("#loginFields").hidden=true;$("#loginBtn").hidden=true;$("#loginDemo").hidden=false;
@@ -1442,7 +1442,7 @@ function relatorioManutencaoTexto(m){
   L.push("");
   L.push("Finalização: "+(m.finalizacao||"—"));
   if(m.proximaAcao&&m.proximaAcao!=="nenhuma")L.push("Próxima ação: "+(PROX_ACOES[m.proximaAcao]||m.proximaAcao)+(m.proximaData?" — "+fmtDate(m.proximaData):""));
-  L.push("","—","Relatório gerado pelo GeraCampo.");
+  L.push("","—","Relatório gerado pelo Banheza Assist.");
   return L.join("\n");
 }
 function emailManutencao(m){
@@ -2247,7 +2247,7 @@ ROUTES.relatorios=(v)=>{
   function docHTML(r){
     return `<div class="repdoc">
       <div class="rephead">
-        <div><div class="org">GeraCampo</div><div class="small muted">Assistência técnica &amp; manutenção de geradores de cloro</div></div>
+        <div><div class="org">${esc((CFG().empresa&&CFG().empresa!=="Minha Empresa")?CFG().empresa:"Banheza Assist")}</div><div class="small muted">Assistência técnica &amp; manutenção de campo</div></div>
         <div class="meta">Emitido em ${fmtDT(nowISO())}<br>Perfil: ${esc(perfilNome())}${usaPeriodo()?"<br>Período: "+fmtDate(st.de)+" a "+fmtDate(st.ate):""}</div>
       </div>
       <div class="repttl">${esc(r.titulo)}</div>
@@ -2256,7 +2256,7 @@ ROUTES.relatorios=(v)=>{
       <div class="tblwrap"><table class="tbl"><thead><tr>${r.colunas.map(c=>`<th>${esc(c)}</th>`).join("")}</tr></thead>
       <tbody>${r.linhas.length?r.linhas.map(ln=>`<tr>${ln.map(c=>`<td>${esc(c)}</td>`).join("")}</tr>`).join(""):`<tr><td colspan="${r.colunas.length}" class="muted">Nenhum registro para o filtro selecionado.</td></tr>`}</tbody></table></div>
       ${r.assinar?`<div class="repsign"><div>Técnico responsável</div><div>Responsável pelo cliente</div></div>`:""}
-      <div class="repfoot"><span>${r.linhas.length} registro(s) · fonte: base local GeraCampo</span><span>Documento gerado automaticamente pelo GeraCampo</span></div>
+      <div class="repfoot"><span>${r.linhas.length} registro(s)</span><span>Documento gerado automaticamente pelo Banheza Assist</span></div>
     </div>`;
   }
   function gerar(){
@@ -2505,7 +2505,7 @@ function installPWA(){
       c.fill(new Path2D("M300 70 150 300h108l-16 142 150-190h-104l12-182Z"));
       pngIcon=cv.toDataURL("image/png");
     }catch(e){}
-    const nm=(CFG().empresa&&CFG().empresa!=="Minha Empresa")?CFG().empresa:"GeraCampo";
+    const nm=(CFG().empresa&&CFG().empresa!=="Minha Empresa")?CFG().empresa:"Banheza Assist";
     const manifest={name:nm,short_name:nm.slice(0,12),description:"Manutenção e operação de campo",
       start_url:".",scope:".",display:"standalone",orientation:"portrait",
       background_color:"#0e7490",theme_color:"#0e7490",
