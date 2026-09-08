@@ -1,7 +1,7 @@
 <title>Banheza Assist</title>
 <meta name="description" content="Banheza Assist — app de assistência técnica e manutenção de campo: ordens de serviço, jornada, veículos e estoque.">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0e7490">
+<meta name="theme-color" content="#0c3b2a">
 <meta name="color-scheme" content="light dark">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -9,31 +9,34 @@
 <meta name="apple-mobile-web-app-title" content="Banheza Assist">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 :root{
-  --ground:#eef1f2; --surface:#ffffff; --surface-2:#f6f8f8; --surface-3:#eceff0;
-  --ink:#12201f; --ink-2:#42575a; --ink-3:#6b8184; --line:#d8dfe0; --line-2:#e7ecec;
-  --accent:#0e7490; --accent-deep:#0b5566; --accent-soft:#dbeef2; --on-accent:#ffffff;
+  --ground:#eef2f0; --surface:#ffffff; --surface-2:#f5f8f6; --surface-3:#eaefec;
+  --ink:#14231d; --ink-2:#455a50; --ink-3:#6d857a; --line:#d7e0da; --line-2:#e6ece8;
+  --accent:#12a150; --accent-deep:#0b7a3b; --accent-soft:#dcf1e4; --on-accent:#ffffff;
+  --brand-dark:#0c3b2a; --brand-lime:#83c932;
   --good:#15803d; --good-soft:#dcf0e1; --warn:#b45309; --warn-soft:#f7e8d3; --crit:#b91c1c; --crit-soft:#f6dede;
   --info:#3f4d8a; --info-soft:#e2e5f3;
   --radius:9px; --radius-sm:6px;
-  --shadow:0 1px 2px rgba(16,32,34,.06),0 8px 24px -12px rgba(16,32,34,.18);
+  --shadow:0 1px 2px rgba(12,32,22,.06),0 8px 24px -12px rgba(12,32,22,.18);
   --font:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-  --display:"Archivo",var(--font); --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --display:"Saira",var(--font); --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --ground:#0b1214; --surface:#121e21; --surface-2:#16252a; --surface-3:#1d2f34;
-  --ink:#e8efef; --ink-2:#a7bcbe; --ink-3:#7a9195; --line:#274045; --line-2:#1e3237;
-  --accent:#3bb6cf; --accent-deep:#2a94ab; --accent-soft:#123138; --on-accent:#03191d;
+  --ground:#0a130f; --surface:#111e17; --surface-2:#16261d; --surface-3:#1d3225;
+  --ink:#e8efea; --ink-2:#a6beb1; --ink-3:#7a958a; --line:#274036; --line-2:#1e3228;
+  --accent:#34d77d; --accent-deep:#22b863; --accent-soft:#0e3626; --on-accent:#04231a;
+  --brand-dark:#0c3b2a; --brand-lime:#9be04a;
   --good:#4ec27d; --good-soft:#123727; --warn:#e0a24a; --warn-soft:#3a2c14; --crit:#e8756b; --crit-soft:#3a1d1c;
   --info:#9aa6e0; --info-soft:#1e2340;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6);
 }}
 :root[data-theme="dark"]{
-  --ground:#0b1214; --surface:#121e21; --surface-2:#16252a; --surface-3:#1d2f34;
-  --ink:#e8efef; --ink-2:#a7bcbe; --ink-3:#7a9195; --line:#274045; --line-2:#1e3237;
-  --accent:#3bb6cf; --accent-deep:#2a94ab; --accent-soft:#123138; --on-accent:#03191d;
+  --ground:#0a130f; --surface:#111e17; --surface-2:#16261d; --surface-3:#1d3225;
+  --ink:#e8efea; --ink-2:#a6beb1; --ink-3:#7a958a; --line:#274036; --line-2:#1e3228;
+  --accent:#34d77d; --accent-deep:#22b863; --accent-soft:#0e3626; --on-accent:#04231a;
+  --brand-dark:#0c3b2a; --brand-lime:#9be04a;
   --good:#4ec27d; --good-soft:#123727; --warn:#e0a24a; --warn-soft:#3a2c14; --crit:#e8756b; --crit-soft:#3a1d1c;
   --info:#9aa6e0; --info-soft:#1e2340;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6);
@@ -53,9 +56,11 @@ button{font:inherit;cursor:pointer}
 .app{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh}
 .side{display:none}
 .brand{display:flex;align-items:center;gap:10px;padding:18px 18px 14px}
-.brand .mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(150deg,var(--accent),var(--accent-deep));display:grid;place-items:center;color:var(--on-accent);flex:none}
-.brand b{font-family:var(--display);font-size:17px;letter-spacing:-.02em}
-.brand span{display:block;font-size:11px;color:var(--ink-3);letter-spacing:.02em}
+.brand .mark{width:32px;height:32px;border-radius:9px;overflow:hidden;flex:none;box-shadow:0 1px 3px rgba(12,59,42,.3)}
+.brand .mark svg{display:block;width:100%;height:100%}
+.brand b{font-family:var(--display);font-size:17px;font-weight:700;letter-spacing:.01em;text-transform:uppercase}
+.brand b i{font-style:normal;color:var(--accent-deep)}
+.brand span{display:block;font-size:10.5px;color:var(--ink-3);letter-spacing:.03em;text-transform:uppercase}
 .nav{padding:6px 10px;overflow-y:auto;flex:1}
 .nav a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--radius-sm);color:var(--ink-2);text-decoration:none;font-weight:500;font-size:13.5px;margin-bottom:1px}
 .nav a .ic{width:17px;height:17px;flex:none;opacity:.85}
@@ -259,10 +264,12 @@ input[type=checkbox]{min-height:0}
 .repsign{margin-top:34px;display:flex;gap:40px;flex-wrap:wrap}
 .repsign div{flex:1;min-width:180px;border-top:1px solid var(--ink-2);padding-top:5px;font-size:11px;color:var(--ink-3);text-align:center}
 
-.loginwrap{position:fixed;inset:0;z-index:100;background:var(--ground);display:grid;place-items:center;padding:20px;padding-top:calc(20px + env(safe-area-inset-top))}
-.logincard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);width:100%;max-width:360px;padding:26px 22px;display:flex;flex-direction:column;gap:12px}
-.logincard .loginmark{width:46px;height:46px;border-radius:12px;background:linear-gradient(150deg,var(--accent),var(--accent-deep));display:grid;place-items:center;color:var(--on-accent);margin-bottom:2px}
-.logincard h1{font-size:20px}
+.loginwrap{position:fixed;inset:0;z-index:100;background:radial-gradient(125% 80% at 50% 0%,#155f3f 0%,#0c3b2a 46%,#07271c 100%);display:grid;place-items:center;padding:20px;padding-top:calc(20px + env(safe-area-inset-top))}
+.logincard{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 20px 50px -18px rgba(0,0,0,.5);width:100%;max-width:360px;padding:28px 24px;display:flex;flex-direction:column;gap:12px}
+.logincard .loginmark{width:54px;height:54px;border-radius:15px;overflow:hidden;margin-bottom:4px;box-shadow:0 3px 12px -2px rgba(12,59,42,.45)}
+.logincard .loginmark svg{display:block;width:100%;height:100%}
+.logincard h1{font-size:21px;font-weight:700;text-transform:uppercase;letter-spacing:.01em}
+.logincard h1 i{font-style:normal;color:var(--accent-deep)}
 .logincard p{margin:0}
 .logincard label.f{margin-top:4px}
 .logincard #loginHint{margin-top:6px;line-height:1.5}
@@ -289,9 +296,17 @@ input[type=checkbox]{min-height:0}
   <aside class="side" id="side">
     <div class="brand">
       <div class="mark" aria-hidden="true">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8Z"/></svg>
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="bmA" x1="10" y1="8" x2="52" y2="58" gradientUnits="userSpaceOnUse"><stop stop-color="#3ad06a"/><stop offset="1" stop-color="#0a7a3a"/></linearGradient>
+            <clipPath id="bcA"><path clip-rule="evenodd" d="M14 8H36C44 8 50 13 50 21C50 26 47 30 43 31.5C48 33 51 37.5 51 43C51 51 45 56 36 56H14ZM24 17V27H35C38.5 27 40.5 25 40.5 22C40.5 19 38.5 17 35 17H24ZM24 37V47H37C40.5 47 42.5 45.8 42.5 42.5C42.5 39.2 40.5 37 37 37H24Z"/></clipPath>
+          </defs>
+          <rect width="64" height="64" rx="15" fill="#0c3b2a"/>
+          <path fill-rule="evenodd" fill="url(#bmA)" d="M14 8H36C44 8 50 13 50 21C50 26 47 30 43 31.5C48 33 51 37.5 51 43C51 51 45 56 36 56H14ZM24 17V27H35C38.5 27 40.5 25 40.5 22C40.5 19 38.5 17 35 17H24ZM24 37V47H37C40.5 47 42.5 45.8 42.5 42.5C42.5 39.2 40.5 37 37 37H24Z"/>
+          <path clip-path="url(#bcA)" fill="#9be04a" opacity=".8" d="M0 44L48 15L56 30L8 58Z"/>
+        </svg>
       </div>
-      <div><b>Banheza Assist</b><span>Manutenção &amp; campo</span></div>
+      <div><b>Banheza<i> Assist</i></b><span>Manutenção &amp; campo</span></div>
     </div>
     <nav class="nav" id="nav"></nav>
     <div class="foot"><span id="footco"></span><br><span id="dbnote"></span></div>
@@ -316,10 +331,18 @@ input[type=checkbox]{min-height:0}
 
 <div class="loginwrap" id="login" hidden>
   <form class="logincard" id="loginform" autocomplete="on">
-    <div class="loginmark">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8Z"/></svg>
+    <div class="loginmark" aria-hidden="true">
+      <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="bmB" x1="10" y1="8" x2="52" y2="58" gradientUnits="userSpaceOnUse"><stop stop-color="#3ad06a"/><stop offset="1" stop-color="#0a7a3a"/></linearGradient>
+          <clipPath id="bcB"><path clip-rule="evenodd" d="M14 8H36C44 8 50 13 50 21C50 26 47 30 43 31.5C48 33 51 37.5 51 43C51 51 45 56 36 56H14ZM24 17V27H35C38.5 27 40.5 25 40.5 22C40.5 19 38.5 17 35 17H24ZM24 37V47H37C40.5 47 42.5 45.8 42.5 42.5C42.5 39.2 40.5 37 37 37H24Z"/></clipPath>
+        </defs>
+        <rect width="64" height="64" rx="15" fill="#0c3b2a"/>
+        <path fill-rule="evenodd" fill="url(#bmB)" d="M14 8H36C44 8 50 13 50 21C50 26 47 30 43 31.5C48 33 51 37.5 51 43C51 51 45 56 36 56H14ZM24 17V27H35C38.5 27 40.5 25 40.5 22C40.5 19 38.5 17 35 17H24ZM24 37V47H37C40.5 47 42.5 45.8 42.5 42.5C42.5 39.2 40.5 37 37 37H24Z"/>
+        <path clip-path="url(#bcB)" fill="#9be04a" opacity=".8" d="M0 44L48 15L56 30L8 58Z"/>
+      </svg>
     </div>
-    <h1 id="loginTitle">Banheza Assist</h1>
+    <h1 id="loginTitle">Banheza<i> Assist</i></h1>
     <p class="muted small" id="loginSub">Entre com seu e-mail e senha</p>
     <div id="loginFields">
       <label class="f">E-mail<input id="loginUser" type="email" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
@@ -775,7 +798,8 @@ function renderRole(){ // atualiza o chip do usuário logado + identidade
 function autenticado(){return !!PERFIL;}
 function mostrarLogin(motivo){
   $("#loginErr").hidden=true;$("#loginPass").value="";
-  $("#loginTitle").textContent=(CFG().empresa&&CFG().empresa!=="Minha Empresa")?CFG().empresa:"Banheza Assist";
+  const emp=(CFG().empresa&&CFG().empresa!=="Minha Empresa")?CFG().empresa:"";
+  $("#loginTitle").innerHTML=emp?esc(emp):'Banheza<i> Assist</i>';
   if(MODO_DEMO){
     $("#loginSub").textContent="Modo demonstração";
     $("#loginFields").hidden=true;$("#loginBtn").hidden=true;$("#loginDemo").hidden=false;
@@ -2495,20 +2519,21 @@ ROUTES.auditoria=(v)=>{
 /* ---------- PWA: manifesto + ícones gerados em runtime ---------- */
 function installPWA(){
   try{
-    const bolt='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="104" fill="#0b5566"/><path d="M300 70 150 300h108l-16 142 150-190h-104l12-182Z" fill="#dff1f6"/></svg>';
+    const bpath="M112 64H288C352 64 400 104 400 168C400 208 376 240 344 252C384 264 408 300 408 344C408 408 360 448 288 448H112C99 448 88 437 88 424V88C88 75 99 64 112 64ZM168 136V216H280C312 216 328 196 328 176C328 156 312 136 280 136H168ZM168 296V376H296C328 376 348 358 348 328C348 298 328 296 296 296H168Z";
+    const bolt='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#0c3b2a"/><path fill-rule="evenodd" d="'+bpath+'" fill="#3ad06a"/></svg>';
     const svgIcon="data:image/svg+xml,"+encodeURIComponent(bolt);
     let pngIcon=svgIcon;
     try{
       const cv=document.createElement("canvas");cv.width=cv.height=192;const c=cv.getContext("2d");
-      c.fillStyle="#0b5566";c.fillRect(0,0,192,192);
-      c.fillStyle="#dff1f6";c.scale(192/512,192/512);
-      c.fill(new Path2D("M300 70 150 300h108l-16 142 150-190h-104l12-182Z"));
+      c.fillStyle="#0c3b2a";c.fillRect(0,0,192,192);
+      c.fillStyle="#3ad06a";c.scale(192/512,192/512);
+      c.fill(new Path2D(bpath),"evenodd");
       pngIcon=cv.toDataURL("image/png");
     }catch(e){}
     const nm=(CFG().empresa&&CFG().empresa!=="Minha Empresa")?CFG().empresa:"Banheza Assist";
     const manifest={name:nm,short_name:nm.slice(0,12),description:"Manutenção e operação de campo",
       start_url:".",scope:".",display:"standalone",orientation:"portrait",
-      background_color:"#0e7490",theme_color:"#0e7490",
+      background_color:"#0c3b2a",theme_color:"#0c3b2a",
       icons:[{src:pngIcon,sizes:"192x192",type:"image/png",purpose:"any"},{src:svgIcon,sizes:"512x512",type:"image/svg+xml",purpose:"any maskable"}]};
     const l=document.createElement("link");l.rel="manifest";
     l.href=URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:"application/manifest+json"}));
@@ -2529,7 +2554,7 @@ const THEMEKEY="geracampo_theme";
 try{const t=localStorage.getItem(THEMEKEY);if(t)document.documentElement.dataset.theme=t;}catch(e){}
 function applyThemeColor(){
   const dark=document.documentElement.dataset.theme==="dark"||(!document.documentElement.dataset.theme&&matchMedia("(prefers-color-scheme: dark)").matches);
-  let mt=document.querySelector('meta[name=theme-color]');if(mt)mt.content=dark?"#0b1214":"#0e7490";
+  let mt=document.querySelector('meta[name=theme-color]');if(mt)mt.content=dark?"#0a130f":"#0c3b2a";
 }
 applyThemeColor();
 $("#themebtn").onclick=()=>{
