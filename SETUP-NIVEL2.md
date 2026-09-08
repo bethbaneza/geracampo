@@ -41,19 +41,31 @@ que não é tocado). Você só troca de app quando eu te entregar o `index.html`
 12. Confira: `select count(*) from clientes;` (e outras tabelas) — devem ter os
     registros que estavam no app.
 
-## PASSO D — me avise
+## PASSO D — reforço opcional (recomendado)
 
-13. Responda **"Nível 2 pronto"** e me diga o **e-mail do admin** que você criou.
-    Eu te devolvo o `index.html` novo (Supabase Auth + tabelas). Aí você faz
-    `git push` e o site passa a usar o modelo seguro.
+13. SQL Editor → cole **`supabase-nivel2-extra.sql`** → **Run**.
+    Impede que um usuário comum marque OS/equipamento como excluído.
 
-## PASSO E — depois que o app novo estiver no ar (não faça agora)
+## PASSO E — publicar o app novo
 
-- Criar os demais usuários: **Authentication → Add user** (Auto Confirm ligado).
-  No app, o admin ajusta nome e nível (técnico/admin) de cada um.
-- Quando tudo estiver ok, pode apagar a tabela velha:
-  `drop table geracampo_estado;`
-- Rodar de novo **Advisors → Security Advisor** — o aviso "RLS Always True" deve sumir.
+14. O `index.html` já vem com a URL e a chave (pública, protegida pelo RLS)
+    embutidas. É só publicar:
+    ```
+    cd "C:\Users\HP\Desktop\Empreendimento Banheza\app-manutencao-geradores"
+    git add -A
+    git commit -m "app com login supabase"
+    git push
+    ```
+15. Recarregue `https://bethbaneza.github.io/geracampo/`. Agora pede **e-mail e senha**.
+    Entre com o admin que você criou no PASSO B.
+
+## PASSO F — depois de testar
+
+16. Criar os demais usuários: **Authentication → Add user** (Auto Confirm ligado).
+    No app → **Configurações → Usuários** o admin ajusta nome e nível de cada um.
+17. Confirme que está ok e apague a tabela velha:
+    `drop table if exists geracampo_estado;`
+18. Rode de novo **Advisors → Security Advisor** — o aviso "RLS Always True" some.
 
 ---
 
@@ -62,6 +74,13 @@ que não é tocado). Você só troca de app quando eu te entregar o `index.html`
 **Precisa de e-mail configurado?** Não, se o admin criar cada usuário com
 "Auto Confirm User" ligado. Só precisaria para "esqueci minha senha" — e aí é
 plugar um SMTP grátis depois.
+
+**Perdi o acesso / esqueci a senha do admin:** Authentication → Users → clique
+no usuário → "Reset password" ou defina uma nova senha ali mesmo.
+
+**O app abriu em "Modo demonstração":** o navegador não conseguiu falar com o
+Supabase (offline, ou é a versão do claude.ai que bloqueia isso). Use o link do
+GitHub Pages.
 
 **Restaurar um backup:**
 ```sql
