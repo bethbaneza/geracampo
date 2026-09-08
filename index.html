@@ -221,6 +221,18 @@ input[type=checkbox]{min-height:0}
 .toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--ground);padding:11px 18px;border-radius:100px;font-size:13px;font-weight:500;z-index:80;box-shadow:var(--shadow);max-width:90vw;text-align:center}
 @media(min-width:960px){.toast{bottom:24px}}
 
+/* leitor de QR / código de barras */
+.scanwrap{position:fixed;inset:0;z-index:120;background:rgba(6,20,14,.72);display:grid;place-items:center;padding:16px;padding-top:calc(16px + env(safe-area-inset-top))}
+.scanbox{background:var(--surface);border-radius:16px;width:100%;max-width:420px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 50px -18px rgba(0,0,0,.55)}
+.scanhead{display:flex;align-items:center;justify-content:space-between}
+.scanhead b{font-family:var(--display);font-size:16px}
+.scanvid{position:relative;border-radius:12px;overflow:hidden;background:#0c1a14;aspect-ratio:1/1}
+.scanvid video{width:100%;height:100%;object-fit:cover;display:block}
+.scanframe{position:absolute;inset:14%;border:3px solid var(--brand-lime,#83c932);border-radius:14px;box-shadow:0 0 0 100vmax rgba(6,20,14,.35);pointer-events:none}
+.scanactions{display:flex;gap:8px}
+.scanactions .btn{flex:1}
+.scanactions .btn.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+
 .emptyst{text-align:center;padding:40px 20px;color:var(--ink-3)}
 .bignums{display:flex;gap:8px}
 .actionbar{display:flex;gap:8px;flex-wrap:wrap}
@@ -393,6 +405,90 @@ function compressImg(file,cb){
     img.src=rd.result;
   };
   rd.readAsDataURL(file);
+}
+
+/* ---------- leitor de QR Code / código de barras (câmera) ---------- */
+let zxingLibP=null;
+function loadZXing(){
+  if(window.ZXing&&window.ZXing.BrowserMultiFormatReader)return Promise.resolve(true);
+  if(zxingLibP)return zxingLibP;
+  zxingLibP=new Promise(res=>{
+    const s=document.createElement("script");
+    s.src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js";
+    s.onload=()=>res(!!(window.ZXing&&window.ZXing.BrowserMultiFormatReader));
+    s.onerror=()=>res(false);
+    document.head.appendChild(s);
+  });
+  return zxingLibP;
+}
+function abrirScanner({titulo="Ler QR Code",dica="Aponte a câmera para o QR Code ou código de barras.",onLer}={}){
+  const ov=document.createElement("div");ov.className="scanwrap";ov.id="scanwrap";
+  ov.innerHTML=`<div class="scanbox">
+    <div class="scanhead"><b>${esc(titulo)}</b><button class="iconbtn" id="scanx" aria-label="Fechar">✕</button></div>
+    <div class="scanvid"><video id="scanvideo" playsinline muted></video><div class="scanframe"></div></div>
+    <p class="small muted" id="scanmsg">${esc(dica)}</p>
+    <div class="scanactions">
+      <button class="btn sm" id="scantorch" hidden>💡 Lanterna</button>
+      <button class="btn sm" id="scancancel">Cancelar</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  let stream=null,stopFn=null,rafId=null,done=false;
+  const video=ov.querySelector("#scanvideo"), msg=ov.querySelector("#scanmsg");
+  const encerrar=()=>{
+    done=true;
+    if(rafId)cancelAnimationFrame(rafId);
+    try{stopFn&&stopFn();}catch(e){}
+    try{stream&&stream.getTracks().forEach(t=>t.stop());}catch(e){}
+    ov.remove();
+  };
+  const sucesso=txt=>{ if(done)return; encerrar(); if(onLer)onLer(String(txt||"").trim()); };
+  ov.querySelector("#scanx").onclick=encerrar;
+  ov.querySelector("#scancancel").onclick=encerrar;
+  ov.addEventListener("mousedown",e=>{if(e.target===ov)encerrar();});
+  (async()=>{
+    try{
+      if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw 0;
+      stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}}});
+    }catch(e){
+      msg.textContent="Não foi possível abrir a câmera. Autorize o acesso nas configurações do navegador e tente de novo.";
+      return;
+    }
+    video.srcObject=stream;try{await video.play();}catch(e){}
+    const track=stream.getVideoTracks()[0];
+    let caps={};try{caps=track.getCapabilities?track.getCapabilities():{};}catch(e){}
+    if(caps.torch){
+      const tb=ov.querySelector("#scantorch");tb.hidden=false;let on=false;
+      tb.onclick=()=>{on=!on;tb.classList.toggle("on",on);track.applyConstraints({advanced:[{torch:on}]}).catch(()=>{});};
+    }
+    if("BarcodeDetector" in window){
+      try{
+        const fmts=await window.BarcodeDetector.getSupportedFormats();
+        const det=new window.BarcodeDetector(fmts&&fmts.length?{formats:fmts}:undefined);
+        const tick=async()=>{
+          if(done)return;
+          try{const codes=await det.detect(video);if(codes&&codes.length&&codes[0].rawValue)return sucesso(codes[0].rawValue);}catch(e){}
+          rafId=requestAnimationFrame(tick);
+        };
+        tick();return;
+      }catch(e){}
+    }
+    msg.textContent="Preparando o leitor…";
+    const ok=await loadZXing();
+    if(done)return;
+    if(!ok){msg.textContent="Sem leitor disponível neste aparelho — digite os dados manualmente.";return;}
+    msg.textContent=dica;
+    try{
+      const reader=new window.ZXing.BrowserMultiFormatReader();
+      stopFn=()=>{try{reader.reset();}catch(e){}};
+      reader.decodeFromStream(stream,video,(result)=>{ if(result&&!done)sucesso(result.getText()); });
+    }catch(e){
+      try{
+        const reader=new window.ZXing.BrowserMultiFormatReader();
+        stopFn=()=>{try{reader.reset();}catch(e){}};
+        reader.decodeFromVideoDevice(undefined,video,(result)=>{ if(result&&!done)sucesso(result.getText()); });
+      }catch(e2){ msg.textContent="Não foi possível iniciar o leitor. Digite os dados manualmente."; }
+    }
+  })();
 }
 
 /* ---------- login / papéis / permissões ---------- */
@@ -1670,7 +1766,10 @@ function mntDetalhe(v,id){
 }
 function addPecaModal(m,cb){
   modal({title:"Adicionar peça",body:`
-    <div class="searchbar" style="margin-bottom:10px"><span class="ic">⌕</span><input id="pq" placeholder="Código, descrição, referência ou código de barras"></div>
+    <div class="row" style="margin-bottom:10px;flex-wrap:nowrap;gap:8px">
+      <div class="searchbar" style="flex:1"><span class="ic">⌕</span><input id="pq" placeholder="Código, descrição, referência ou barras"></div>
+      <button type="button" class="btn sm" id="pscan" title="Ler código de barras">⛶</button>
+    </div>
     <div class="panel" style="max-height:240px;overflow:auto"><div class="list" id="plist"></div></div>
     <div class="row" style="margin-top:12px">
       <label class="f" style="max-width:110px">Quantidade<input id="pqtd" type="number" value="1" min="1"></label>
@@ -1693,6 +1792,12 @@ function addPecaModal(m,cb){
   };
   drawP("");
   $("#pq").oninput=e=>drawP(e.target.value);
+  $("#pscan").onclick=()=>abrirScanner({titulo:"Ler código de barras",dica:"Aponte para o código de barras da peça.",onLer:txt=>{
+    if(!txt)return toast("Nada foi lido.");
+    $("#pq").value=txt;drawP(txt);
+    const achou=DB.produtos.filter(ativo).filter(p=>[p.codigo,p.referencia,p.barras].join(" ").toLowerCase().includes(txt.toLowerCase()));
+    toast(achou.length?"Código lido — "+achou.length+" resultado(s).":"Código "+txt+" — nenhum produto com esse código.");
+  }});
   $("#okpeca").onclick=()=>{
     const qtd=Math.max(1,+$("#pqtd").value||1);const baixa=$("#pbaixa").value;
     m.pecas=m.pecas||[];m.pecas.push({produtoId:sel.id,qtd,baixa,aprovada:baixa==="automatica"});
@@ -1911,12 +2016,13 @@ function produtoModal(p){
     <label class="f full">Descrição <span class="rq">*</span><input id="pd" value="${esc(e.descricao||"")}"></label>
     <label class="f">Código<input id="pc" class="mono" value="${esc(e.codigo||"")}"></label>
     <label class="f">Referência<input id="pr" value="${esc(e.referencia||"")}"></label>
-    <label class="f">Código de barras<input id="pb" class="mono" value="${esc(e.barras||"")}"></label>
+    <label class="f">Código de barras<span style="display:flex;gap:6px"><input id="pb" class="mono" value="${esc(e.barras||"")}"><button type="button" class="btn sm" id="pbscan" title="Ler código de barras">⛶</button></span></label>
     <label class="f">Estoque atual<input id="pe" type="number" step="any" value="${esc(e.estoque??0)}"></label>
     <label class="f">Estoque mínimo<input id="pm" type="number" step="any" value="${esc(e.minimo??0)}"></label>
     <label class="f">Custo unitário<input id="pu" type="number" step="any" value="${esc(e.custo??0)}"></label>
     <label class="f">Fonte<input id="pf" value="${esc(e.fonte||CFG().osExterna||"Manual")}"></label>
   </div>`,footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="okprod">Salvar</button>`});
+  $("#pbscan").onclick=()=>abrirScanner({titulo:"Ler código de barras",dica:"Aponte para o código de barras da peça.",onLer:txt=>{if(txt){$("#pb").value=txt;toast("Código lido: "+txt);}}});
   $("#okprod").onclick=()=>{
     const d=$("#pd").value.trim();if(!d)return toast("Informe a descrição.");
     const data={descricao:d,codigo:$("#pc").value.trim(),referencia:$("#pr").value.trim(),barras:$("#pb").value.trim(),estoque:+$("#pe").value||0,minimo:+$("#pm").value||0,custo:+$("#pu").value||0,fonte:$("#pf").value.trim()||"Manual"};
@@ -1939,7 +2045,7 @@ ROUTES.estoque=(v)=>{
   };
   v.innerHTML=`<div class="pagehead between"><div><h1>Peças &amp; estoque</h1><p>Cadastre os produtos da sua empresa. O app registra o uso técnico da peça e o vínculo com OS/equipamento, e trata solicitações.</p></div>
     ${can("criar")?`<button class="btn primary" id="addProd">+ Produto</button>`:""}</div>
-  <div class="row" style="margin-bottom:12px"><div class="searchbar"><span class="ic">⌕</span><input id="q" placeholder="Código, descrição, referência ou código de barras"></div></div>
+  <div class="row" style="margin-bottom:12px;flex-wrap:nowrap;gap:8px"><div class="searchbar" style="flex:1"><span class="ic">⌕</span><input id="q" placeholder="Código, descrição, referência ou barras"></div><button type="button" class="btn sm" id="qscan" title="Ler código de barras">⛶</button></div>
   <div class="detailgrid two">
     <div class="panel"><div class="ph"><h3>Produtos</h3></div>
       <div class="tblwrap"><table class="tbl"><thead><tr><th>Produto</th><th>Estoque</th><th>Mín.</th><th>Custo</th><th>Situação</th><th></th></tr></thead><tbody id="prodBody"></tbody></table></div>
@@ -1957,6 +2063,10 @@ ROUTES.estoque=(v)=>{
   </div>`;
   v.querySelector("#addProd")&&(v.querySelector("#addProd").onclick=()=>produtoModal(null));
   v.querySelector("#q").oninput=e=>{q=e.target.value;draw();};
+  v.querySelector("#qscan").onclick=()=>abrirScanner({titulo:"Ler código de barras",dica:"Aponte para o código de barras da peça.",onLer:txt=>{
+    if(!txt)return toast("Nada foi lido.");
+    q=txt;v.querySelector("#q").value=txt;draw();
+  }});
   v.querySelectorAll("[data-atende]").forEach(b=>b.onclick=()=>{
     const s=byId("solicitacoesPeca",b.dataset.atende);s.status="atendida";
     const o=DB.ordens.find(x=>ativo(x)&&x.numeroBling===s.osRef);if(o&&o.status==="aguardando_peca")o.status="aguardando_retorno";
@@ -1972,8 +2082,8 @@ function despesaModal(d){
   d=d||{categoria:"combustivel",dataHora:new Date().toISOString().slice(0,16),jornadaId:jA?jA.id:null,veiculoId:jA?jA.veiculoId:null};
   modal({title:nova?"Nova despesa":"Editar despesa",wide:true,body:`
     <label class="f">Categoria<select id="dcat">${Object.entries(CAT_DESPESA).map(([k,x])=>`<option value="${k}"${d.categoria===k?" selected":""}>${x.nome}</option>`).join("")}</select></label>
+    <button type="button" class="btn sm" id="dscan" style="margin-top:10px">⛶ Ler QR Code da nota fiscal</button>
     <div id="dcomb" style="margin-top:12px">
-      <button type="button" class="btn sm" id="dscan" style="margin-bottom:8px">⛶ Simular QR Code (nota do posto)</button>
       <div class="formgrid">
         <label class="f">Posto<input id="d_posto" value="${esc(d.posto||"")}"></label>
         <label class="f">Combustível<select id="d_comb">${["Gasolina","Etanol","Diesel","GNV"].map(c=>`<option${d.combustivel===c?" selected":""}>${c}</option>`).join("")}</select></label>
@@ -1996,14 +2106,20 @@ function despesaModal(d){
   $("#dcat").onchange=sync;sync();
   const recalc=()=>{const l=+$("#d_l").value,p=+$("#d_p").value;if(l&&p)$("#d_v").value=(l*p).toFixed(2);};
   $("#d_l").oninput=recalc;$("#d_p").oninput=recalc;
-  $("#dscan").onclick=()=>{
-    const postos=["Posto Trevo","Auto Posto Central","Posto Ipiranga BR277","Shell Rodovia"];
-    const litros=+(20+Math.random()*35).toFixed(2),preco=+(5.6+Math.random()).toFixed(2);
-    $("#d_posto").value=postos[Math.floor(Math.random()*postos.length)];
-    $("#d_l").value=litros;$("#d_p").value=preco;$("#d_v").value=(litros*preco).toFixed(2);
-    $("#d_doc").value="NFC-e "+Math.random().toString().slice(2,13)+"…";
-    toast("Dados extraídos do QR Code — confira antes de salvar.");
-  };
+  $("#dscan").onclick=()=>abrirScanner({
+    titulo:"Ler QR Code da nota",
+    dica:"Aponte para o QR Code da nota fiscal (NFC-e / cupom).",
+    onLer:txt=>{
+      if(!txt)return toast("Nada foi lido.");
+      const chave=(txt.replace(/\D/g,"").match(/\d{44}/)||[])[0];
+      $("#d_doc").value=chave||(txt.length>120?txt.slice(0,120)+"…":txt);
+      if(chave){
+        const aa=chave.slice(2,4),mm=chave.slice(4,6);
+        if(+mm>=1&&+mm<=12&&!$("#d_dh").value)$("#d_dh").value=`20${aa}-${mm}-01T12:00`;
+        toast("Chave da nota lida. Confira o valor e a data antes de salvar.");
+      }else toast("Código lido — confira os campos.");
+    }
+  });
   $("#dok").onclick=()=>{
     const cat=$("#dcat").value,valor=+$("#d_v").value||0;
     if(!valor)return toast("Informe o valor total.");
@@ -2371,7 +2487,7 @@ ROUTES.fluxo=(v)=>{
       <li>Técnico não repete dados permanentes do equipamento a cada visita.</li>
       <li>Campos técnicos extensíveis; chegada ao cliente pode ser automática.</li>
       <li>Jornada com vários clientes por dia; dois técnicos podem dividir o veículo.</li>
-      <li>QR Code de abastecimento com fallback manual; arquitetura aberta a telemetria (Arduino/ESP32).</li>
+      <li>Leitura da nota fiscal (QR Code / código de barras) pela câmera, com preenchimento manual como alternativa.</li>
     </ul>
   </div>`;
 };
