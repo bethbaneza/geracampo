@@ -193,6 +193,9 @@ begin
 end $$;
 
 -- ---------- 8. BACKUP DIÁRIO AUTOMÁTICO (grátis) ------------------
+-- OBS: se ESTA parte der erro ("pg_cron"), TODO O RESTO ACIMA JÁ FUNCIONOU.
+--      Vá em Database -> Extensions, ative "pg_cron", e rode SÓ da linha
+--      abaixo até o "PARE AQUI". Não precisa rodar o arquivo todo de novo.
 -- (a tabela backup_diario já foi criada no passo 4)
 create extension if not exists pg_cron;
 do $$ begin perform cron.unschedule('backup-geracampo'); exception when others then null; end $$;
