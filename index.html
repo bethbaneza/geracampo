@@ -653,6 +653,7 @@ const byId=(arr,id)=>DB[arr].find(x=>x.id===id);
 const cliNome=id=>byId("clientes",id)?.fantasia||byId("clientes",id)?.razao||"—";
 const eqNome=id=>{const e=byId("equipamentos",id);return e?e.ns+" · "+e.modelo:"—";};
 const tecNome=id=>byId("tecnicos",id)?.nome||"—";
+const tecNomes=ids=>(ids||[]).map(tecNome).filter(n=>n&&n!=="—").join(", ");
 const veiNome=id=>{const v=byId("veiculos",id);return v?v.placa+" · "+v.marcaModelo:"—";};
 const ativo=x=>!x.excluido;
 const TIPOS_ATEND={locacao:"Locação",assistencia:"Assistência técnica",garantia:"Garantia",cortesia:"Cortesia / sem cobrança",outro:"Outro"};
@@ -1424,6 +1425,7 @@ function relatorioManutencaoTexto(m){
   if(m.numeroBlingRef)L.push("OS: "+m.numeroBlingRef);
   L.push("Data: "+fmtDate(m.criadaEm));
   L.push("Técnico: "+tecNome(m.tecnicoId));
+  if(m.equipe&&m.equipe.length)L.push("Equipe de apoio: "+tecNomes(m.equipe));
   L.push("Tipo de atendimento: "+(TIPOS_ATEND[m.tipoAtendimento]||"—"));
   L.push("");
   L.push("Problema relatado: "+(m.problema||"—"));
@@ -1531,6 +1533,13 @@ function mntDetalhe(v,id){
         ${m.status==="encerrada"&&can("editar")?`<button class="btn sm" id="reabrir" style="margin-top:12px">Reabrir</button>`:""}
       </div>
       <div class="card pad">
+        <h3 style="margin-bottom:6px">Equipe no atendimento</h3>
+        <p class="small muted" style="margin:0 0 10px">Responsável: <b>${esc(tecNome(m.tecnicoId))}</b>. Marque outros técnicos que participaram deste atendimento.</p>
+        <div class="stack" id="equipeBox">
+          ${DB.tecnicos.filter(t=>ativo(t)&&t.id!==m.tecnicoId).map(t=>`<label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" data-eq="${t.id}" style="width:auto" ${(m.equipe||[]).includes(t.id)?"checked":""} ${readonly?"disabled":""}> ${esc(t.nome)}</label>`).join("")||'<span class="small muted">Nenhum outro técnico cadastrado.</span>'}
+        </div>
+      </div>
+      <div class="card pad">
         <h3 style="margin-bottom:10px">Contexto</h3>
         <dl class="kv">
           <dt>OS (Bling)</dt><dd class="mono">${esc(m.numeroBlingRef||"—")}</dd>
@@ -1538,6 +1547,7 @@ function mntDetalhe(v,id){
           <dt>Equipamento</dt><dd><a href="#/equipamentos/${m.equipamentoId}" class="mono">${esc(eq?.ns||"—")}</a></dd>
           <dt>Tipo</dt><dd>${esc(TIPOS_ATEND[m.tipoAtendimento]||"—")}</dd>
           <dt>Técnico</dt><dd>${esc(tecNome(m.tecnicoId))}</dd>
+          ${m.equipe&&m.equipe.length?`<dt>Equipe</dt><dd>${esc(tecNomes(m.equipe))}</dd>`:""}
           <dt>Veículo</dt><dd>${esc(m.veiculoId?veiNome(m.veiculoId):"—")}</dd>
           <dt>Início</dt><dd>${fmtDT(m.horaInicio||m.criadaEm)}</dd>
           ${m.horaFim?`<dt>Fim</dt><dd>${fmtDT(m.horaFim)}</dd>`:""}
@@ -1590,7 +1600,12 @@ function mntDetalhe(v,id){
       m.finalizacao=v.querySelector("#finalizacao").value;
       m.proximaAcao=v.querySelector("#proximaAcao").value;
       m.proximaData=v.querySelector("#proximaData").value||null;
+      m.equipe=[...v.querySelectorAll("[data-eq]:checked")].map(i=>i.dataset.eq);
     };
+    v.querySelectorAll("[data-eq]").forEach(i=>i.onchange=()=>{
+      m.equipe=[...v.querySelectorAll("[data-eq]:checked")].map(x=>x.dataset.eq);
+      audit("Edição","Manutenção",m.id,"equipe: "+(tecNomes(m.equipe)||"—"));persist();
+    });
     v.querySelector("#addTeste").onclick=()=>{
       const nome=prompt("Nome do teste");if(!nome)return;
       m.testesExtra=m.testesExtra||[];m.testesExtra.push({nome:nome.trim(),valor:""});persist();renderExtra();
@@ -1679,6 +1694,7 @@ ROUTES.jornada=(v,rest)=>{
     <div class="formgrid">
       <label class="f">Técnico<select id="tec">${DB.tecnicos.filter(ativo).map(t=>`<option value="${t.id}"${t.id===VIEWER.userId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
       <label class="f">Papel<select id="papel"><option value="motorista">Motorista</option><option value="passageiro">Passageiro / técnico</option></select></label>
+      <label class="f">Equipe junto (outros técnicos no veículo)<select id="equipe" multiple size="3">${DB.tecnicos.filter(t=>ativo(t)&&t.id!==VIEWER.userId).map(t=>`<option value="${t.id}">${esc(t.nome)}</option>`).join("")}</select><span class="small muted">Segure Ctrl (ou toque) para marcar mais de um.</span></label>
       <label class="f">Veículo<select id="vei">${DB.veiculos.filter(x=>ativo(x)&&x.situacao==="Ativo").map(x=>`<option value="${x.id}">${esc(x.placa)} · ${esc(x.marcaModelo)} (${km(x.kmAtual)})</option>`).join("")}</select></label>
       <label class="f">KM inicial<input id="kmi" type="number"></label>
       <label class="f">Origem<select id="origem"><option value="empresa">Empresa</option><option value="residencia">Residência (direto ao 1º cliente)</option></select></label>
@@ -1698,7 +1714,7 @@ ROUTES.jornada=(v,rest)=>{
   v.querySelector("#startJ").onclick=()=>{
     const kmi=+v.querySelector("#kmi").value;
     if(!kmi)return toast("Informe o KM inicial.");
-    const j={id:uid("jor"),criadaEm:nowISO(),tecnicoId:v.querySelector("#tec").value,papel:v.querySelector("#papel").value,veiculoId:veiSel.value,kmInicial:kmi,kmFinal:null,origem:v.querySelector("#origem").value,status:"aberta",
+    const j={id:uid("jor"),criadaEm:nowISO(),tecnicoId:v.querySelector("#tec").value,papel:v.querySelector("#papel").value,equipe:[...v.querySelector("#equipe").selectedOptions].map(o=>o.value),veiculoId:veiSel.value,kmInicial:kmi,kmFinal:null,origem:v.querySelector("#origem").value,status:"aberta",
       eventos:[{tipo:"login",ts:nowISO()}]};
     const file=v.querySelector("#painel").files[0];
     const fin=()=>{DB.jornadas.unshift(j);audit("Início","Jornada",j.id);persist();location.hash="#/jornada/"+j.id;};
@@ -1718,7 +1734,7 @@ function jornadaDetalhe(v,id){
   v.innerHTML=`<div class="between" style="margin-bottom:6px"><a class="btn ghost sm" href="#/jornada">← Jornada</a>
     ${can("excluir")?`<button class="btn sm danger" id="deljor">Excluir</button>`:""}</div>
   <div class="pagehead between"><div><h1>Jornada · ${fmtDate(j.criadaEm)}</h1>
-    <p>${esc(veiNome(j.veiculoId))} · ${esc(tecNome(j.tecnicoId))} (${esc(j.papel||"—")}) · origem ${esc(j.origem)}</p></div>
+    <p>${esc(veiNome(j.veiculoId))} · ${esc(tecNome(j.tecnicoId))} (${esc(j.papel||"—")})${j.equipe&&j.equipe.length?" + "+esc(tecNomes(j.equipe)):""} · origem ${esc(j.origem)}</p></div>
     <div>${aberta?'<span class="pill warn"><span class="dot"></span>em andamento</span>':'<span class="pill good">encerrada</span>'}</div></div>
   <div class="kpis" style="margin-bottom:18px">
     <div class="kpi"><div class="lab">KM inicial</div><div class="val tnum" style="font-size:20px">${j.kmInicial?.toLocaleString("pt-BR")||"—"}</div></div>
@@ -2094,14 +2110,14 @@ ROUTES.relatorios=(v)=>{
     manutencoes(){
       let r=DB.manutencoes.filter(ativo).filter(m=>per(m.criadaEm));
       if(st.cliente)r=r.filter(m=>m.clienteId===st.cliente);
-      if(st.tecnico)r=r.filter(m=>m.tecnicoId===st.tecnico);
+      if(st.tecnico)r=r.filter(m=>m.tecnicoId===st.tecnico||(m.equipe||[]).includes(st.tecnico));
       if(st.tipoAtend)r=r.filter(m=>m.tipoAtendimento===st.tipoAtend);
       if(st.fin)r=r.filter(m=>m.finalizacao===st.fin);
       r.sort((a,b)=>new Date(a.criadaEm)-new Date(b.criadaEm));
       const pt={};r.forEach(m=>pt[m.tipoAtendimento]=(pt[m.tipoAtendimento]||0)+1);
       return{titulo:"Relatório de manutenções",
-        colunas:["Data","OS","Cliente","NS","Tipo","Técnico","Finalização","Qtd peças","Custo peças"],
-        linhas:r.map(m=>[fmtDate(m.criadaEm),m.numeroBlingRef||"—",cliNome(m.clienteId),byId("equipamentos",m.equipamentoId)?.ns||"—",TIPOS_ATEND[m.tipoAtendimento]||"—",tecNome(m.tecnicoId),m.finalizacao||"Em aberto",(m.pecas||[]).reduce((s,p)=>s+p.qtd,0),money(custoMnt(m))]),
+        colunas:["Data","OS","Cliente","NS","Tipo","Técnico","Equipe","Finalização","Qtd peças","Custo peças"],
+        linhas:r.map(m=>[fmtDate(m.criadaEm),m.numeroBlingRef||"—",cliNome(m.clienteId),byId("equipamentos",m.equipamentoId)?.ns||"—",TIPOS_ATEND[m.tipoAtendimento]||"—",tecNome(m.tecnicoId),tecNomes(m.equipe)||"—",m.finalizacao||"Em aberto",(m.pecas||[]).reduce((s,p)=>s+p.qtd,0),money(custoMnt(m))]),
         totais:[{l:"Manutenções",n:r.length},{l:"Encerradas",n:r.filter(m=>m.status==="encerrada").length},{l:"Locação / Assistência",n:(pt.locacao||0)+" / "+(pt.assistencia||0)},{l:"Custo de peças",n:money(r.reduce((s,m)=>s+custoMnt(m),0))}]};
     },
     os(){
@@ -2129,14 +2145,14 @@ ROUTES.relatorios=(v)=>{
     },
     jornadas(){
       let r=DB.jornadas.filter(ativo).filter(j=>per(j.criadaEm));
-      if(st.tecnico)r=r.filter(j=>j.tecnicoId===st.tecnico);
+      if(st.tecnico)r=r.filter(j=>j.tecnicoId===st.tecnico||(j.equipe||[]).includes(st.tecnico));
       if(st.veiculo)r=r.filter(j=>j.veiculoId===st.veiculo);
       r.sort((a,b)=>new Date(a.criadaEm)-new Date(b.criadaEm));
       let totKm=0,totVis=0;
       const linhas=r.map(j=>{const perc=j.kmFinal?j.kmFinal-j.kmInicial:0;const vis=(j.eventos||[]).filter(e=>e.tipo==="chegada").length;totKm+=perc;totVis+=vis;
-        return[fmtDate(j.criadaEm),tecNome(j.tecnicoId),byId("veiculos",j.veiculoId)?.placa||"—",j.kmInicial?.toLocaleString("pt-BR")||"—",j.kmFinal?j.kmFinal.toLocaleString("pt-BR"):"—",perc?km(perc):"—",vis,dur(j)];});
+        return[fmtDate(j.criadaEm),tecNome(j.tecnicoId)+(j.equipe&&j.equipe.length?" + "+tecNomes(j.equipe):""),byId("veiculos",j.veiculoId)?.placa||"—",j.kmInicial?.toLocaleString("pt-BR")||"—",j.kmFinal?j.kmFinal.toLocaleString("pt-BR"):"—",perc?km(perc):"—",vis,dur(j)];});
       return{titulo:"Relatório de jornadas",
-        colunas:["Data","Técnico","Veículo","KM inicial","KM final","Percorrido","Visitas","Duração"],
+        colunas:["Data","Técnico / equipe","Veículo","KM inicial","KM final","Percorrido","Visitas","Duração"],
         linhas,totais:[{l:"Jornadas",n:r.length},{l:"KM percorrido",n:km(totKm)},{l:"Visitas",n:totVis},{l:"Encerradas",n:r.filter(j=>j.status==="encerrada").length}]};
     },
     despesas(){
