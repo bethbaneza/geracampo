@@ -56,7 +56,7 @@ que não é tocado). Você só troca de app quando eu te entregar o `index.html`
     git commit -m "app com login supabase"
     git push
     ```
-15. Recarregue `https://bethbaneza.github.io/geracampo/`. Agora pede **e-mail e senha**.
+15. Recarregue `https://app.banheza.com.br/`. Agora pede **e-mail e senha**.
     Entre com o admin que você criou no PASSO B.
 
 ## PASSO F — depois de testar

@@ -52,7 +52,7 @@ Enquanto `LINK_ASSINATURA` não estiver preenchido, a tela "Assinar" mostra
 
 ## Como funciona para o cliente
 
-1. Abre `https://bethbaneza.github.io/geracampo/` → **Criar uma conta** →
+1. Abre `https://app.banheza.com.br/` → **Criar uma conta** →
    "Criar empresa" → e‑mail + senha.
 2. Cai no **onboarding**: nome da empresa, logo, como chama o equipamento.
 3. 30 dias de teste com tudo liberado.
