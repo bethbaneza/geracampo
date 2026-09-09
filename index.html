@@ -258,6 +258,23 @@ input[type=checkbox]{min-height:0}
 .stepper .s.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .stepper .s.done{background:var(--good-soft);border-color:var(--good-soft);color:var(--good)}
 
+/* assistente passo a passo (jornada) */
+.wizprog{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--ink-3);font-weight:600;margin-bottom:6px}
+.wizq{font-family:var(--display);font-size:19px;font-weight:600;color:var(--ink);margin:0 0 14px}
+.wizopts{display:flex;flex-direction:column;gap:10px}
+.wizopt{display:flex;flex-direction:column;justify-content:center;width:100%;text-align:left;background:var(--surface);border:1.5px solid var(--line);border-radius:var(--radius-sm);padding:15px 16px;font-size:15px;font-weight:600;color:var(--ink);min-height:58px;box-shadow:var(--shadow)}
+.wizopt:hover{border-color:var(--accent)}
+.wizopt.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-deep)}
+.wizopt .k{font-size:12px;color:var(--ink-3);font-weight:500;margin-top:3px}
+.wizopt.sel .k{color:var(--accent-deep)}
+.wiznav{display:flex;gap:10px;margin-top:20px}
+.wiznav .btn{flex:1;min-height:48px}
+.wizbig{font-size:16px;min-height:54px;padding:0 26px}
+.wizsummary{display:flex;flex-direction:column;gap:2px;margin-bottom:6px}
+.wizsummary .r{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line-2);font-size:14px}
+.wizsummary .r b{font-weight:600;color:var(--ink)}
+.wizsummary .r span{color:var(--ink-3)}
+
 .alertbox{border:1px solid var(--warn-soft);background:var(--warn-soft);color:var(--warn);padding:11px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;display:flex;gap:9px;align-items:flex-start}
 .alertbox.crit{border-color:var(--crit-soft);background:var(--crit-soft);color:var(--crit)}
 .alertbox.info{border-color:var(--info-soft);background:var(--info-soft);color:var(--info)}
@@ -1814,44 +1831,91 @@ function criarSolicitacaoAguardandoPeca(m){
 }
 
 /* ============ JORNADA ============ */
+let WJ=null; // estado do assistente de início de jornada
 ROUTES.jornada=(v,rest)=>{
   if(rest[0])return jornadaDetalhe(v,rest[0]);
   const aberta=jornadaAberta();
-  if(aberta)return jornadaDetalhe(v,aberta.id);
-  const encerradas=DB.jornadas.filter(j=>ativo(j)).sort((a,b)=>new Date(b.criadaEm)-new Date(a.criadaEm));
-  v.innerHTML=`<div class="pagehead"><h1>Jornada</h1><p>Uma jornada cobre vários clientes no mesmo dia, sem retorno à empresa entre atendimentos. Localização por eventos, não rastreamento contínuo.</p></div>
-  <div class="card pad" style="margin-bottom:16px">
-    <h3 style="margin-bottom:12px">Iniciar jornada</h3>
-    <div class="formgrid">
-      <label class="f">Técnico<select id="tec">${DB.tecnicos.filter(ativo).map(t=>`<option value="${t.id}"${t.id===VIEWER.userId?" selected":""}>${esc(t.nome)}</option>`).join("")}</select></label>
-      <label class="f">Papel<select id="papel"><option value="motorista">Motorista</option><option value="passageiro">Passageiro / técnico</option></select></label>
-      <label class="f">Equipe junto (outros técnicos no veículo)<select id="equipe" multiple size="3">${DB.tecnicos.filter(t=>ativo(t)&&t.id!==VIEWER.userId).map(t=>`<option value="${t.id}">${esc(t.nome)}</option>`).join("")}</select><span class="small muted">Segure Ctrl (ou toque) para marcar mais de um.</span></label>
-      <label class="f">Veículo<select id="vei">${DB.veiculos.filter(x=>ativo(x)&&x.situacao==="Ativo").map(x=>`<option value="${x.id}">${esc(x.placa)} · ${esc(x.marcaModelo)} (${km(x.kmAtual)})</option>`).join("")}</select></label>
-      <label class="f">KM inicial<input id="kmi" type="number"></label>
-      <label class="f">Origem<select id="origem"><option value="empresa">Empresa</option><option value="residencia">Residência (direto ao 1º cliente)</option></select></label>
-      <label class="f">Foto do painel (opcional)<input id="painel" type="file" accept="image/*"></label>
-    </div>
-    <button class="btn primary" id="startJ" style="margin-top:14px">Iniciar jornada</button>
+  if(aberta){WJ=null;return jornadaDetalhe(v,aberta.id);}
+  if(WJ)return wizardJornada(v);
+  const encerradas=DB.jornadas.filter(j=>ativo(j)&&j.status==="encerrada").sort((a,b)=>new Date(b.criadaEm)-new Date(a.criadaEm));
+  v.innerHTML=`<div class="pagehead"><h1>Jornada</h1><p>Uma jornada cobre vários clientes no mesmo dia. O app registra deslocamentos, KM e atendimentos por eventos — sem rastreamento contínuo.</p></div>
+  <div class="card pad" style="text-align:center;padding:30px 20px;margin-bottom:16px">
+    <div style="font-family:var(--display);font-size:17px;font-weight:600;color:var(--ink)">Nenhuma jornada aberta</div>
+    <p class="small muted" style="margin:6px 0 18px">Comece o dia registrando de onde você saiu, o veículo e o KM.</p>
+    <button class="btn primary wizbig" id="abrirWiz">Iniciar jornada</button>
   </div>
   <div class="panel"><div class="ph"><h3>Jornadas anteriores</h3></div>
-    <div class="list">${encerradas.filter(j=>j.status==="encerrada").slice(0,10).map(j=>`
+    <div class="list">${encerradas.slice(0,10).map(j=>`
       <a class="item" href="#/jornada/${j.id}"><div><div class="t">${fmtDate(j.criadaEm)} · ${esc(veiNome(j.veiculoId))}</div>
       <div class="d">${km((j.kmFinal||0)-(j.kmInicial||0))} · ${(j.eventos||[]).filter(e=>e.tipo==="chegada").length} visitas</div></div>
       <span class="sp"></span><span class="pill good">encerrada</span></a>`).join("")||'<div class="emptyst small">Nenhuma jornada anterior.</div>'}</div>
   </div>`;
-  const veiSel=v.querySelector("#vei");
-  const setKm=()=>{const vv=byId("veiculos",veiSel.value);if(vv)v.querySelector("#kmi").value=vv.kmAtual;};
-  setKm();veiSel.onchange=setKm;
-  v.querySelector("#startJ").onclick=()=>{
-    const kmi=+v.querySelector("#kmi").value;
-    if(!kmi)return toast("Informe o KM inicial.");
-    const j={id:uid("jor"),criadaEm:nowISO(),tecnicoId:v.querySelector("#tec").value,papel:v.querySelector("#papel").value,equipe:[...v.querySelector("#equipe").selectedOptions].map(o=>o.value),veiculoId:veiSel.value,kmInicial:kmi,kmFinal:null,origem:v.querySelector("#origem").value,status:"aberta",
-      eventos:[{tipo:"login",ts:nowISO()}]};
-    const file=v.querySelector("#painel").files[0];
-    const fin=()=>{DB.jornadas.unshift(j);audit("Início","Jornada",j.id);persist();location.hash="#/jornada/"+j.id;};
-    if(file){compressImg(file,dataURL=>{saveFotoLocal("painel_"+j.id,dataURL);j.fotoPainelId="painel_"+j.id;fin();});}else fin();
+  v.querySelector("#abrirWiz").onclick=()=>{
+    WJ={passo:1,origem:"",tecnicoId:VIEWER.userId,papel:"",equipe:[],veiculoId:"",kmInicial:"",fotoFile:null};
+    wizardJornada(v);
   };
 };
+
+const WIZ_PASSOS=["Local de partida","Técnico","Função","Veículo e KM","Confirmar"];
+function wizardJornada(v){
+  const w=WJ, tecs=DB.tecnicos.filter(ativo), veics=DB.veiculos.filter(x=>ativo(x)&&x.situacao==="Ativo");
+  let body="";
+  if(w.passo===1){
+    body=`<p class="wizq">De onde você está saindo agora?</p><div class="wizopts">
+      <button class="wizopt${w.origem==="empresa"?" sel":""}" data-o="empresa">Saí da empresa<span class="k">Passo pela empresa antes do 1º cliente</span></button>
+      <button class="wizopt${w.origem==="residencia"?" sel":""}" data-o="residencia">Saí de casa<span class="k">Vou direto ao 1º cliente</span></button></div>`;
+  } else if(w.passo===2){
+    body=`<p class="wizq">Quem é o técnico responsável?</p><div class="wizopts">${tecs.map(t=>`<button class="wizopt${w.tecnicoId===t.id?" sel":""}" data-t="${t.id}">${esc(t.nome)}<span class="k">${esc(PAPEIS[t.papel]?.nome||t.papel||"")}</span></button>`).join("")}</div>`;
+  } else if(w.passo===3){
+    const outros=tecs.filter(t=>t.id!==w.tecnicoId);
+    body=`<p class="wizq">Qual a função nesta viagem?</p><div class="wizopts">
+      <button class="wizopt${w.papel==="motorista"?" sel":""}" data-p="motorista">Motorista<span class="k">Dirige o veículo</span></button>
+      <button class="wizopt${w.papel==="passageiro"?" sel":""}" data-p="passageiro">Passageiro / técnico<span class="k">Vai como técnico, não dirige</span></button></div>
+      ${outros.length?`<p class="wizq" style="margin-top:22px;font-size:16px">Foi outro técnico junto?</p><div class="wizopts">${outros.map(t=>`<button class="wizopt${w.equipe.includes(t.id)?" sel":""}" data-eq="${t.id}">${esc(t.nome)}<span class="k">${w.equipe.includes(t.id)?"Na equipe desta jornada — toque p/ tirar":"Toque para incluir"}</span></button>`).join("")}</div>`:""}`;
+  } else if(w.passo===4){
+    body=`<p class="wizq">Qual veículo e o KM de agora?</p>
+      <div class="wizopts" style="margin-bottom:14px">${veics.map(x=>`<button class="wizopt${w.veiculoId===x.id?" sel":""}" data-v="${x.id}">${esc(x.placa)} · ${esc(x.marcaModelo)}<span class="k">Último KM registrado: ${km(x.kmAtual)}</span></button>`).join("")||'<div class="emptyst small">Nenhum veículo ativo cadastrado.</div>'}</div>
+      <label class="f">KM no painel agora<input id="wizKm" type="number" inputmode="numeric" value="${esc(w.kmInicial)}" placeholder="Ex: 84520"></label>
+      <label class="f" style="margin-top:12px">Foto do painel (opcional)<input id="wizFoto" type="file" accept="image/*"></label>`;
+  } else {
+    const t=byId("tecnicos",w.tecnicoId), x=byId("veiculos",w.veiculoId);
+    body=`<p class="wizq">Confira antes de iniciar</p><div class="wizsummary">
+      <div class="r"><span>Saída</span><b>${w.origem==="empresa"?"Da empresa":"De casa (direto ao cliente)"}</b></div>
+      <div class="r"><span>Técnico</span><b>${esc(t?.nome||"—")}</b></div>
+      <div class="r"><span>Função</span><b>${w.papel==="motorista"?"Motorista":"Passageiro / técnico"}</b></div>
+      ${w.equipe.length?`<div class="r"><span>Equipe junto</span><b>${esc(tecNomes(w.equipe))}</b></div>`:""}
+      <div class="r"><span>Veículo</span><b>${esc(x?x.placa+" · "+x.marcaModelo:"—")}</b></div>
+      <div class="r"><span>KM inicial</span><b>${w.kmInicial?(+w.kmInicial).toLocaleString("pt-BR"):"—"}</b></div></div>
+      <p class="small muted" style="margin-top:10px">Ao iniciar, você já escolhe a OS do primeiro atendimento.</p>`;
+  }
+  const pode = w.passo===1?!!w.origem : w.passo===2?!!w.tecnicoId : w.passo===3?!!w.papel : w.passo===4?(!!w.veiculoId&&+w.kmInicial>0) : true;
+  v.innerHTML=`<div class="pagehead between"><h1>Iniciar jornada</h1><button class="btn ghost sm" id="wizCancel">Cancelar</button></div>
+    <div class="card pad">
+      <div class="wizprog">Passo ${w.passo} de 5 · ${WIZ_PASSOS[w.passo-1]}</div>
+      ${body}
+      <div class="wiznav">
+        <button class="btn" id="wizBack"${w.passo===1?" disabled":""}>Voltar</button>
+        ${w.passo<5?`<button class="btn primary" id="wizNext"${pode?"":" disabled"}>Continuar</button>`:`<button class="btn primary" id="wizFinish">Iniciar jornada</button>`}
+      </div>
+    </div>`;
+  const re=()=>wizardJornada(v);
+  v.querySelectorAll("[data-o]").forEach(b=>b.onclick=()=>{w.origem=b.dataset.o;re();});
+  v.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{w.tecnicoId=b.dataset.t;w.equipe=w.equipe.filter(id=>id!==b.dataset.t);re();});
+  v.querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>{w.papel=b.dataset.p;re();});
+  v.querySelectorAll("[data-eq]").forEach(b=>b.onclick=()=>{const id=b.dataset.eq;w.equipe=w.equipe.includes(id)?w.equipe.filter(x=>x!==id):[...w.equipe,id];re();});
+  v.querySelectorAll("[data-v]").forEach(b=>b.onclick=()=>{const x=byId("veiculos",b.dataset.v);w.veiculoId=b.dataset.v;if(x&&!(+w.kmInicial>0))w.kmInicial=x.kmAtual;re();});
+  const kmIn=v.querySelector("#wizKm");if(kmIn)kmIn.oninput=e=>{w.kmInicial=e.target.value;const n=v.querySelector("#wizNext");if(n)n.disabled=!(w.veiculoId&&+w.kmInicial>0);};
+  const foto=v.querySelector("#wizFoto");if(foto)foto.onchange=e=>{w.fotoFile=e.target.files[0]||null;};
+  v.querySelector("#wizCancel").onclick=()=>{WJ=null;router();};
+  v.querySelector("#wizBack").onclick=()=>{ if(w.passo>1){w.passo--;re();} };
+  const nx=v.querySelector("#wizNext");if(nx)nx.onclick=()=>{ if(pode){w.passo++;re();} };
+  const fn=v.querySelector("#wizFinish");if(fn)fn.onclick=()=>{
+    const j={id:uid("jor"),criadaEm:nowISO(),tecnicoId:w.tecnicoId,papel:w.papel,equipe:w.equipe.slice(),veiculoId:w.veiculoId,kmInicial:+w.kmInicial,kmFinal:null,origem:w.origem,status:"aberta",eventos:[{tipo:"login",ts:nowISO()}]};
+    const go=()=>{DB.jornadas.unshift(j);audit("Início","Jornada",j.id);WJ=null;persist();toast("Jornada iniciada. Escolha a OS do primeiro atendimento.");location.hash="#/os";};
+    if(w.fotoFile)compressImg(w.fotoFile,d=>{saveFotoLocal("painel_"+j.id,d);j.fotoPainelId="painel_"+j.id;go();});
+    else go();
+  };
+}
 const EVT_LABEL={login:"Login / início da jornada",desloc_inicio:"Início de deslocamento",chegada:"Chegada ao cliente",atend_inicio:"Início do atendimento",atend_fim:"Fim do atendimento",almoco_inicio:"Início do almoço",almoco_fim:"Fim do almoço",retorno:"Retorno à empresa",encerramento:"Encerramento da jornada",pausa:"Pausa"};
 function jornadaDetalhe(v,id){
   const j=byId("jornadas",id);if(!j||!ativo(j))return v.innerHTML='<div class="alertbox crit">Jornada não encontrada.</div>';
