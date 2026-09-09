@@ -424,8 +424,9 @@ const KEY="geracampo_v1";
    sem login válido a chave não dá acesso a nada). ===== */
 const SUPABASE_URL="https://cahfugahdvrdpymztyhz.supabase.co";
 const SUPABASE_ANON_KEY="sb_publishable_aKCOaHv4l8yzx4KDScxnFw_EsFu9ujS";
-/* ----- comercial (preencha antes de vender) ----- */
-const PRECO_PRO="[SEU PREÇO]";                 // ex.: "149"
+/* ----- comercial ----- */
+const PRECO_PRO="59,90";                       // valor mensal atual
+const NOTA_PRECO="Preço de fundador — congelado para os 20 primeiros clientes.";
 const LINK_ASSINATURA="https://mpago.la/1RzNXsq";   // assinatura recorrente do Mercado Pago
 const CONTATO_BANHEZA="[seu-email@banheza.com.br]";
 const $=s=>document.querySelector(s);
@@ -1351,7 +1352,8 @@ ROUTES.assinar=(v)=>{
   <div class="card pad" style="max-width:520px">
     <span class="protag" style="font-size:11px;padding:4px 10px">Plano Pro</span>
     <div style="font-family:var(--display);font-size:34px;font-weight:700;color:var(--ink);margin:12px 0 2px">${precoOk?"R$ "+esc(PRECO_PRO):"Consulte o valor"}${precoOk?'<span style="font-size:15px;font-weight:500;color:var(--ink-3)"> /mês</span>':""}</div>
-    <p class="small muted" style="margin:0 0 18px">por empresa · usuários ilimitados</p>
+    <p class="small muted" style="margin:0 0 4px">por empresa · usuários ilimitados</p>
+    ${(typeof NOTA_PRECO!=="undefined"&&NOTA_PRECO)?`<p class="small" style="margin:0 0 18px;color:var(--accent-deep);font-weight:600">${esc(NOTA_PRECO)}</p>`:'<div style="height:14px"></div>'}
     <div class="stack" style="gap:9px;margin-bottom:20px">
       ${recursos.map(r=>`<div style="display:flex;gap:9px;font-size:14px;color:var(--ink-2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"/></svg>${esc(r)}</div>`).join("")}
     </div>
