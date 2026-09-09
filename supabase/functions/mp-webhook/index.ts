@@ -16,13 +16,18 @@ const admin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
-async function mpGet(path: string): Promise<any> {
+async function mpGet(path: string): Promise<any | null> {
   const r = await fetch("https://api.mercadopago.com" + path, {
     headers: { Authorization: `Bearer ${MP_TOKEN}` },
   });
+  if (r.status === 404) return null; // recurso nao existe (ex.: id "123456" da simulacao do MP)
   if (!r.ok) throw new Error(`MP ${path} -> ${r.status}`);
   return r.json();
 }
+const ok = (msg: string) =>
+  new Response(JSON.stringify({ ok: true, msg }), {
+    status: 200, headers: { "content-type": "application/json" },
+  });
 
 Deno.serve(async (req: Request) => {
   try {
@@ -37,33 +42,36 @@ Deno.serve(async (req: Request) => {
       id = (b.data && b.data.id) || b.id || id;
     }
     type = String(type).toLowerCase();
-    if (!id) return new Response("sem id", { status: 200 });
+    if (!id) return ok("sem id");
 
     let email = "", status = "", ref = String(id);
 
     if (type.includes("authorized_payment")) {
       const ap = await mpGet(`/authorized_payments/${id}`);
+      if (!ap) return ok("authorized_payment inexistente (teste?)");
       ref = ap.preapproval_id || id;
       status = ap.status === "processed" ? "authorized" : (ap.status || "");
       if (ap.preapproval_id) {
         const pa = await mpGet(`/preapproval/${ap.preapproval_id}`);
-        email = pa.payer_email || "";
+        email = pa?.payer_email || "";
       }
     } else if (type.includes("preapproval") || type.includes("subscription")) {
       const pa = await mpGet(`/preapproval/${id}`);
+      if (!pa) return ok("preapproval inexistente (teste?)");
       email = pa.payer_email || "";
       status = pa.status || "";
       ref = pa.id || id;
     } else if (type === "payment") {
       const pay = await mpGet(`/v1/payments/${id}`);
+      if (!pay) return ok("pagamento inexistente (teste?)");
       email = pay?.payer?.email || "";
       status = pay.status === "approved" ? "authorized" : (pay.status || "");
       ref = pay.metadata?.preapproval_id || String(id);
     } else {
-      return new Response("ignorado: " + type, { status: 200 });
+      return ok("evento ignorado: " + type);
     }
 
-    if (!email) return new Response("sem e-mail do pagador", { status: 200 });
+    if (!email) return ok("sem e-mail do pagador");
 
     const { data, error } = await admin.rpc("mp_atualizar_assinatura", {
       p_email: email, p_status: status, p_ref: ref,
@@ -71,9 +79,7 @@ Deno.serve(async (req: Request) => {
     if (error) { console.error("rpc erro:", error); return new Response("erro rpc", { status: 500 }); }
 
     console.log("mp-webhook:", { type, status, email, empresa: data });
-    return new Response(JSON.stringify({ ok: true, empresa: data, status }), {
-      status: 200, headers: { "content-type": "application/json" },
-    });
+    return ok(data ? `empresa ${data} atualizada (${status})` : `e-mail ${email} sem empresa`);
   } catch (e) {
     console.error("mp-webhook falhou:", e);
     // 500 -> o Mercado Pago tenta de novo mais tarde
