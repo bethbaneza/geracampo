@@ -426,7 +426,7 @@ const SUPABASE_URL="https://cahfugahdvrdpymztyhz.supabase.co";
 const SUPABASE_ANON_KEY="sb_publishable_aKCOaHv4l8yzx4KDScxnFw_EsFu9ujS";
 /* ----- comercial (preencha antes de vender) ----- */
 const PRECO_PRO="[SEU PREÇO]";                 // ex.: "149"
-const LINK_ASSINATURA="[LINK MERCADO PAGO]";   // link da assinatura recorrente
+const LINK_ASSINATURA="https://mpago.la/1RzNXsq";   // assinatura recorrente do Mercado Pago
 const CONTATO_BANHEZA="[seu-email@banheza.com.br]";
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -826,6 +826,15 @@ async function carregarTudo(){
   DB.convites=(res[nomes.length+4].data||[]);
   normalizeDB();persistLocal();carregarSnap();
 }
+let RETORNO_PAGAMENTO=false;
+function checarRetornoPagamento(){
+  const p=new URLSearchParams(location.search);
+  if(p.get("assinou")||p.get("preapproval_id")||/approved|authorized/i.test(p.get("collection_status")||p.get("status")||"")){
+    RETORNO_PAGAMENTO=true;
+    toast("Pagamento recebido! A liberação do plano Pro pode levar alguns minutos.");
+    try{history.replaceState({},"",location.pathname+location.hash.replace(/[?&]assinou=1/,""));}catch(e){}
+  }
+}
 function planoEfetivo(){
   if(MODO_DEMO)return "pro";
   const e=EMPRESA||{},ag=Date.now();
@@ -1176,7 +1185,8 @@ async function entrar(session){
   assinarRealtime();
   SYNC.mode="ok";SYNC.ts=Date.now();updateSync();
   if(precisaOnboarding()){ router(); abrirOnboarding(); return; }
-  if(!location.hash||location.hash==="#/"||location.hash==="#/mais")location.hash="#/painel";
+  if(RETORNO_PAGAMENTO&&planoEfetivo()!=="pro"){location.hash="#/assinar";}
+  else if(!location.hash||location.hash==="#/"||location.hash==="#/mais")location.hash="#/painel";
   router();
   toast("Bem-vindo, "+p.nome.split(/\s+/)[0]+".");
 }
@@ -1331,14 +1341,16 @@ ROUTES.assinar=(v)=>{
   const p=planoEfetivo(), d=diasTrial(), adm=ehAdmin();
   const recursos=["Ordens de serviço e importação de OS em PDF","Veículos, frota e preventivas por KM/tempo","Peças, estoque e leitor de código de barras","Gastos & despesas com leitor de nota fiscal","Relatórios em PDF e CSV, e indicadores","Envio do relatório de manutenção ao cliente"];
   const linkOk=LINK_ASSINATURA&&LINK_ASSINATURA[0]!=="[";
-  v.innerHTML=`<div class="pagehead"><h1>${p==="free"?"Seu teste terminou":"Plano Banheza Assist"}</h1>
-    <p>${p==="trial"?`Você está no teste gratuito — faltam <b>${d} dia${d===1?"":"s"}</b>. Tudo liberado até lá.`
-      :p==="free"?"O teste de 30 dias acabou. Jornada, Manutenções, Clientes e Equipamentos continuam liberados; o restante volta com o plano Pro."
-      :"Sua assinatura Pro está ativa."+(EMPRESA&&EMPRESA.assinatura_ate?" Válida até "+fmtDate(EMPRESA.assinatura_ate)+".":"")}</p></div>
+  const precoOk=PRECO_PRO&&PRECO_PRO[0]!=="[";
+  const sub=p==="trial"?`Você está no teste gratuito — faltam <b>${d} dia${d===1?"":"s"}</b>. Tudo liberado até lá.`
+    :p==="free"?"O teste de 30 dias acabou. Jornada, Manutenções, Clientes e Equipamentos continuam liberados; o resto volta com o plano Pro."
+    :"Sua assinatura Pro está ativa."+(EMPRESA&&EMPRESA.assinatura_ate?" Válida até "+fmtDate(EMPRESA.assinatura_ate)+".":"");
+  v.innerHTML=`<div class="pagehead"><h1>${p==="free"?"Seu teste terminou":"Plano Banheza Assist"}</h1><p>${sub}</p></div>
+  ${RETORNO_PAGAMENTO&&p!=="pro"?`<div class="alertbox info" style="max-width:520px;margin-bottom:16px"><span>◔</span><div>Pagamento recebido. A liberação pode levar alguns minutos — se não liberar em 1 hora, <a href="mailto:${esc(CONTATO_BANHEZA)}">fale com a Banheza</a>.</div></div>`:""}
   ${p==="pro"?'<div class="alertbox info" style="max-width:520px"><span>✓</span><div>Nada a fazer aqui — todos os recursos estão liberados.</div></div>':`
   <div class="card pad" style="max-width:520px">
     <span class="protag" style="font-size:11px;padding:4px 10px">Plano Pro</span>
-    <div style="font-family:var(--display);font-size:34px;font-weight:700;color:var(--ink);margin:12px 0 2px">R$ ${esc(PRECO_PRO)}<span style="font-size:15px;font-weight:500;color:var(--ink-3)"> /mês</span></div>
+    <div style="font-family:var(--display);font-size:34px;font-weight:700;color:var(--ink);margin:12px 0 2px">${precoOk?"R$ "+esc(PRECO_PRO):"Consulte o valor"}${precoOk?'<span style="font-size:15px;font-weight:500;color:var(--ink-3)"> /mês</span>':""}</div>
     <p class="small muted" style="margin:0 0 18px">por empresa · usuários ilimitados</p>
     <div class="stack" style="gap:9px;margin-bottom:20px">
       ${recursos.map(r=>`<div style="display:flex;gap:9px;font-size:14px;color:var(--ink-2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"/></svg>${esc(r)}</div>`).join("")}
@@ -3177,6 +3189,7 @@ $("#themebtn").onclick=()=>{
 
 async function boot(){
   document.documentElement.setAttribute("data-hidden-app","");   // esconde o app até resolver a sessão
+  checarRetornoPagamento();
   mostrarSplash();
   const libOk=await loadSupaLib();
   if(!libOk){ MODO_DEMO=true; return mostrarLogin("Não foi possível carregar a biblioteca."); }
