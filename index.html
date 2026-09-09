@@ -307,6 +307,11 @@ input[type=checkbox]{min-height:0}
 .repsign{margin-top:34px;display:flex;gap:40px;flex-wrap:wrap}
 .repsign div{flex:1;min-width:180px;border-top:1px solid var(--ink-2);padding-top:5px;font-size:11px;color:var(--ink-3);text-align:center}
 
+.splash{position:fixed;inset:0;z-index:200;background:#002820 url("assets/capa-assist.jpg") center/cover no-repeat;display:flex;align-items:flex-end;justify-content:center;padding:0 0 max(52px,calc(env(safe-area-inset-bottom) + 40px))}
+.splash .hint{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.82);background:rgba(0,32,24,.32);border:1px solid rgba(255,255,255,.2);border-radius:100px;padding:11px 24px;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);animation:splashPulse 1.8s ease-in-out infinite}
+.splash.out{opacity:0;transition:opacity .45s ease;pointer-events:none}
+@keyframes splashPulse{0%,100%{opacity:.6}50%{opacity:1}}
+
 .loginwrap{position:fixed;inset:0;z-index:100;background:linear-gradient(180deg,#002820 0%,#003828 52%,#007044 100%);display:grid;place-items:center;padding:24px;padding-top:calc(24px + env(safe-area-inset-top));overflow:auto}
 .logincard{width:100%;max-width:344px;display:flex;flex-direction:column;gap:14px;color:#fff;text-align:left}
 .logincard .loginmark{width:56px;align-self:flex-start;margin-bottom:10px}
@@ -369,6 +374,7 @@ input[type=checkbox]{min-height:0}
   <nav class="tabbar" id="tabbar" aria-label="Navegação principal"></nav>
 </div>
 
+<div class="splash" id="splash" hidden><span class="hint">Toque para entrar</span></div>
 <div class="loginwrap" id="login" hidden>
   <form class="logincard" id="loginform" autocomplete="on">
     <div class="loginmark" aria-hidden="true"><img src="assets/mark-green.png" alt="" width="256" height="318"></div>
@@ -1000,6 +1006,20 @@ function mostrarLogin(motivo){
   $("#loginHint").hidden=false;
   document.documentElement.setAttribute("data-hidden-app","");
   $("#login").hidden=false;
+  dispensarSplash();
+}
+let splashInicio=0,splashFeito=false;
+function mostrarSplash(){
+  const s=$("#splash");if(!s||splashFeito||splashInicio)return;
+  splashInicio=Date.now();s.hidden=false;
+  s.onclick=()=>dispensarSplash(true);
+}
+function dispensarSplash(agora){
+  const s=$("#splash");if(!s||splashFeito)return;
+  const espera=agora?0:Math.max(0,1600-(Date.now()-splashInicio));
+  if(espera>0){setTimeout(()=>dispensarSplash(),espera);return;}
+  splashFeito=true;s.classList.add("out");
+  setTimeout(()=>{s.hidden=true;s.classList.remove("out");},480);
 }
 function esconderLogin(){$("#login").hidden=true;document.documentElement.removeAttribute("data-hidden-app");}
 async function fazerLogin(){
@@ -1032,7 +1052,7 @@ async function entrar(session){
   PERFIL={...p,email:session.user.email};VIEWER.userId=p.id;saveViewer();
   SYNC.mode="conectando";updateSync();
   await carregarTudo();
-  esconderLogin();renderNav();renderRole();
+  esconderLogin();dispensarSplash();renderNav();renderRole();
   if(!location.hash||location.hash==="#/"||location.hash==="#/mais")location.hash="#/painel";
   router();
   assinarRealtime();
@@ -2897,6 +2917,7 @@ function installPWA(){
 
 /* ---------- boot ---------- */
 installPWA();
+try{new Image().src="assets/capa-assist.jpg";}catch(e){}
 renderNav();renderTabs();
 $("#userbtn").onclick=()=>contaSheet();
 $("#backbtn").onclick=()=>{if(history.length>1)history.back();else location.hash="#/mais";};
@@ -2918,6 +2939,7 @@ $("#themebtn").onclick=()=>{
 
 async function boot(){
   document.documentElement.setAttribute("data-hidden-app","");   // esconde o app até resolver a sessão
+  mostrarSplash();
   const libOk=await loadSupaLib();
   if(!libOk){ MODO_DEMO=true; return mostrarLogin("Não foi possível carregar a biblioteca."); }
   try{
