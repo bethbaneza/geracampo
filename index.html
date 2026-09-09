@@ -510,6 +510,60 @@ function abrirScanner({titulo="Ler QR Code",dica="Aponte a câmera para o QR Cod
   })();
 }
 
+/* ---------- importação de OS a partir de PDF ---------- */
+let pdfLibP=null;
+function loadPdfLib(){
+  if(window.pdfjsLib)return Promise.resolve(true);
+  if(pdfLibP)return pdfLibP;
+  pdfLibP=new Promise(res=>{
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload=()=>{try{window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";}catch(e){}res(!!window.pdfjsLib);};
+    s.onerror=()=>res(false);
+    document.head.appendChild(s);
+  });
+  return pdfLibP;
+}
+async function extrairTextoPDF(file){
+  const buf=await file.arrayBuffer();
+  const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+  let txt="";
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const c=await page.getTextContent();
+    txt+=c.items.map(i=>i.str).join(" ")+"\n";
+  }
+  return txt.trim();
+}
+function parseOsPdf(txt){
+  const t=(txt||"").replace(/ /g," ").replace(/[ \t]+/g," ");
+  const r={numero:"",data:"",clienteNome:"",clienteDoc:"",descricao:"",bruto:txt};
+  let m=t.match(/(?:ordem de servi\S{0,2}o|\bo\.?\s?s\.?\b|n\S{0,2}mero(?: da os| do pedido)?|venda|pedido)\s*(?:n[º°o.]{0,2})?\s*[:#=.\-]?\s*(\d{2,10})/i)
+    || t.match(/\bos[\s.\-:#]{0,3}(\d{3,10})\b/i)
+    || t.match(/\bn[º°o.]{1,2}\s*[:#]?\s*(\d{3,10})\b/i);
+  if(m)r.numero=m[1];
+  m=t.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/)||t.match(/\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/);
+  if(m)r.clienteDoc=m[0];
+  m=t.match(/\b(\d{2}\/\d{2}\/\d{4})\b/);
+  if(m)r.data=m[1];
+  m=t.match(/(?:cliente|raz\S{0,2}o social|destinat\S{0,2}rio|nome do cliente)\s*[:\-]?\s*(\S[^\n]{2,70}?)(?=\n|\s+\d{2}[.\/]\d{3}|\s+(?:cnpj|cpf|endere|telefone|fone|e-?mail|data|vendedor|munic|cidade|bairro|cep)\b|\s{2,}|$)/i);
+  if(m)r.clienteNome=m[1].trim().replace(/[|,;:\-]+$/,"").trim();
+  m=t.match(/(?:observa\S{0,3}es?|descri\S{0,2}o|hist\S{0,2}rico|servi\S{0,2}o solicitado|relato|problema relatado|problema)\s*[:\-]?\s*([\s\S]{5,600}?)(?=\s(?:total|valor|assinatura|t\S{0,2}cnico|vendedor)\b|_{3,}|$)/i);
+  if(m)r.descricao=m[1].replace(/\s+/g," ").trim();
+  return r;
+}
+function clienteDoPdf(r){
+  const dig=s=>String(s||"").replace(/\D/g,"");
+  if(r.clienteDoc){const d=dig(r.clienteDoc);const c=DB.clientes.find(x=>ativo(x)&&dig(x.doc)===d);if(c)return c;}
+  if(r.clienteNome){const n=r.clienteNome.toLowerCase();const c=DB.clientes.find(x=>ativo(x)&&[x.fantasia,x.razao].some(v=>v&&(v.toLowerCase().includes(n)||n.includes(v.toLowerCase()))));if(c)return c;}
+  return null;
+}
+function dataUrlParaBlob(u){
+  const [h,b64]=u.split(",");const mime=(h.match(/:(.*?);/)||[])[1]||"application/pdf";
+  const bin=atob(b64);const arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+  return new Blob([arr],{type:mime});
+}
+
 /* ---------- login / papéis / permissões ---------- */
 const PAPEIS={
   admin:{nome:"Administrador",d:"Acesso total"},
@@ -1399,10 +1453,10 @@ ROUTES.os=(v,rest)=>{
     v.querySelector("#oslist").innerHTML=list.map(o=>`
       <a class="item" href="#/os/${o.id}"><span class="avatar">OS</span>
       <div><div class="t">${esc(o.numeroBling)} · ${esc(cliNome(o.clienteId))}</div><div class="d">${esc(o.descricao)} ${o.equipamentoId?"· "+esc(eqNome(o.equipamentoId)):""}</div></div>
-      <span class="sp"></span>${o.tipoAtendimento?tipoAtendPill(o.tipoAtendimento):""}${osStatusPill(o.status)}</a>`).join("")||'<div class="emptyst">Nenhuma OS.</div>';
+      <span class="sp"></span>${o.origem==="pdf"?'<span class="pill">PDF</span>':""}${o.tipoAtendimento?tipoAtendPill(o.tipoAtendimento):""}${osStatusPill(o.status)}</a>`).join("")||'<div class="emptyst">Nenhuma OS.</div>';
   };
-  v.innerHTML=`<div class="pagehead between"><div><h1>Ordens de Serviço</h1><p>Enquanto a integração com o <b>Bling</b> não está ligada, cadastre a OS aqui manualmente — o número do Bling é só um campo de referência. Depois a mesma tela passa a receber as OS automaticamente.</p></div>
-    ${can("criar")?`<div class="actionbar"><button class="btn primary" id="novaOS">+ Nova OS</button><button class="btn" id="import">↧ Gerar OS de exemplo</button></div>`:""}</div>
+  v.innerHTML=`<div class="pagehead between"><div><h1>Ordens de Serviço</h1><p>Cadastre a OS manualmente ou <b>importe o PDF da OS</b> (o app lê número, cliente e descrição). O número é só referência enquanto não há integração automática.</p></div>
+    ${can("criar")?`<div class="actionbar"><button class="btn primary" id="novaOS">+ Nova OS</button><button class="btn" id="importPdf">Importar OS (PDF)</button><button class="btn ghost" id="import">Gerar OS de exemplo</button><input type="file" id="pdfInput" accept="application/pdf" hidden></div>`:""}</div>
   <div class="chips" style="margin-bottom:14px">
     ${[["todas","Todas"],["aberta","Abertas"],["em_atendimento","Em atendimento"],["aguardando_peca","Aguardando peça"],["aguardando_retorno","Aguardando retorno"],["encerrada","Encerradas"]].map(([k,l],ix)=>`<button class="chip${ix===0?" on":""}" data-f="${k}">${l}</button>`).join("")}
   </div>
@@ -1434,6 +1488,24 @@ ROUTES.os=(v,rest)=>{
       DB.ordens.unshift(n);audit("Criação","OS",n.id,"cadastro manual");persist();closeModal();toast("OS "+num+" criada.");location.hash="#/os/"+n.id;
     };
   });
+  const pdfIn=v.querySelector("#pdfInput");
+  v.querySelector("#importPdf")&&(v.querySelector("#importPdf").onclick=()=>{
+    if(!DB.clientes.filter(ativo).length)return toast("Cadastre ao menos um cliente antes de importar uma OS.");
+    pdfIn.value="";pdfIn.click();
+  });
+  pdfIn&&(pdfIn.onchange=async e=>{
+    const file=e.target.files[0];if(!file)return;
+    if(file.size>8*1024*1024)return toast("PDF muito grande (máx. 8 MB).");
+    toast("Lendo o PDF…");
+    const ok=await loadPdfLib();
+    if(!ok)return toast("Não foi possível carregar o leitor de PDF. Tente de novo com internet.");
+    let texto="";
+    try{texto=await extrairTextoPDF(file);}catch(err){console.warn(err);return toast("Não consegui ler este PDF. Ele pode ser uma imagem escaneada (sem texto).");}
+    if(!texto)return toast("O PDF não tem texto selecionável (parece um scan). Cadastre a OS manualmente.");
+    const rd=new FileReader();
+    rd.onload=()=>osImportModal(parseOsPdf(texto),file.name,rd.result);
+    rd.readAsDataURL(file);
+  });
   v.querySelector("#import")&&(v.querySelector("#import").onclick=()=>{
     const cli=DB.clientes.filter(ativo);if(!cli.length)return toast("Cadastre um cliente primeiro.");
     const c=cli[Math.floor(Math.random()*cli.length)];
@@ -1443,6 +1515,37 @@ ROUTES.os=(v,rest)=>{
   });
   draw();
 };
+function osImportModal(r,fileName,dataUrl){
+  const cli=DB.clientes.filter(ativo);
+  const match=clienteDoPdf(r);
+  const nextNum=()=>{const nums=DB.ordens.map(o=>parseInt(String(o.numeroBling).replace(/\D/g,""),10)).filter(n=>!isNaN(n));return "OS-"+((nums.length?Math.max(...nums):24800)+1);};
+  const dataISO=(()=>{const m=(r.data||"").match(/(\d{2})\/(\d{2})\/(\d{4})/);return m?`${m[3]}-${m[2]}-${m[1]}`:new Date().toISOString().slice(0,10);})();
+  const detectado=[r.numero&&`nº ${r.numero}`,r.clienteNome&&`cliente "${r.clienteNome}"`,r.clienteDoc,r.data].filter(Boolean).join(" · ");
+  modal({title:"Importar OS do PDF",wide:true,body:`
+    <p class="small muted" style="margin:0 0 4px">Arquivo: <b>${esc(fileName)}</b></p>
+    <p class="small ${match?"":"muted"}" style="margin:0 0 12px">${match?`Cliente reconhecido: <b>${esc(cliNome(match.id))}</b>.`:(detectado?`Detectado no PDF: ${esc(detectado)}. Confira os campos abaixo.`:"Não consegui detectar os campos automaticamente — preencha abaixo.")}</p>
+    <div class="formgrid">
+      <label class="f">Número da OS <span class="rq">*</span><input id="inum" class="mono" value="${esc(r.numero?("OS-"+r.numero).replace("OS-OS-","OS-"):nextNum())}"></label>
+      <label class="f">Data de abertura<input id="idata" type="date" value="${dataISO}"></label>
+      <label class="f full">Cliente <span class="rq">*</span><select id="icli">${cli.map(c=>`<option value="${c.id}"${match&&match.id===c.id?" selected":""}>${esc(c.fantasia||c.razao)} · ${esc(c.doc)}</option>`).join("")}</select>
+        ${!match&&(r.clienteNome||r.clienteDoc)?`<span class="small muted">PDF diz: ${esc(r.clienteNome||"")} ${esc(r.clienteDoc||"")} — se não estiver na lista, <a href="#/clientes/novo" onclick="closeModal()">cadastre o cliente</a> e importe de novo.</span>`:""}</label>
+      <label class="f full">Descrição / problema relatado<textarea id="idesc" style="min-height:90px">${esc(r.descricao||"")}</textarea></label>
+      <label class="f full">Situação da cobrança<select id="isc">${SIT_COBRANCA.map(s=>`<option${s==="Não se aplica"?" selected":""}>${s}</option>`).join("")}</select></label>
+    </div>
+    <details style="margin-top:12px"><summary class="small muted" style="cursor:pointer">Ver o texto lido do PDF</summary>
+      <textarea readonly style="min-height:150px;font-size:11px;margin-top:8px">${esc(r.bruto||"")}</textarea></details>`,
+    footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="okImp">Criar OS</button>`});
+  $("#okImp").onclick=()=>{
+    const num=$("#inum").value.trim();
+    if(!num)return toast("Informe o número da OS.");
+    if(DB.ordens.some(o=>ativo(o)&&o.numeroBling.toLowerCase()===num.toLowerCase()))return toast("Já existe uma OS com esse número.");
+    const dt=$("#idata").value?new Date($("#idata").value+"T09:00:00").toISOString():nowISO();
+    const n={id:uid("os"),numeroBling:num,criadaEm:dt,clienteId:$("#icli").value,descricao:$("#idesc").value.trim()||"(sem descrição)",status:"aberta",equipamentoId:null,tipoAtendimento:null,situacaoCobranca:$("#isc").value,origem:"pdf",arquivoPdf:fileName,textoImportado:(r.bruto||"").slice(0,4000)};
+    DB.ordens.unshift(n);
+    if(dataUrl&&dataUrl.length<6*1024*1024){try{saveFotoLocal("ospdf_"+n.id,dataUrl);}catch(e){}}
+    audit("Importação","OS",n.id,"PDF: "+fileName);persist();closeModal();toast("OS "+num+" importada do PDF.");location.hash="#/os/"+n.id;
+  };
+}
 function osDetalhe(v,id){
   const o=byId("ordens",id);if(!o||!ativo(o))return v.innerHTML='<div class="alertbox crit">OS não encontrada.</div>';
   const mnt=DB.manutencoes.find(m=>ativo(m)&&m.osId===id);
@@ -1455,7 +1558,10 @@ function osDetalhe(v,id){
       ${can("editar")?`<button class="btn sm" id="edos">Editar</button>`:""}
       ${can("excluir","ordens")?`<button class="btn sm danger" id="delos">Excluir</button>`:""}
     </div></div>
-  <div class="alertbox info" style="margin-bottom:16px"><span>ℹ</span><div>${o.origem==="manual"||o.origem==="exemplo"?`OS cadastrada manualmente${osExt?" (sem integração "+esc(osExt)+")":""}. O número <b>${esc(o.numeroBling)}</b> é apenas referência.`:`OS oficial${osExt?" no "+esc(osExt):" no sistema externo"}. O app não cria uma segunda OS — apenas relaciona o histórico técnico a <b>${esc(o.numeroBling)}</b>.`}</div></div>
+  <div class="alertbox info" style="margin-bottom:16px"><span>ℹ</span><div>${
+    o.origem==="pdf"?`OS importada do PDF <b>${esc(o.arquivoPdf||"")}</b>. Os campos foram lidos automaticamente — confira antes de atender.${getFotoLocal("ospdf_"+o.id)?' <a href="#" id="verpdf">Abrir PDF original</a>':""}`
+    :o.origem==="manual"||o.origem==="exemplo"?`OS cadastrada manualmente${osExt?" (sem integração "+esc(osExt)+")":""}. O número <b>${esc(o.numeroBling)}</b> é apenas referência.`
+    :`OS oficial${osExt?" no "+esc(osExt):" no sistema externo"}. O app não cria uma segunda OS — apenas relaciona o histórico técnico a <b>${esc(o.numeroBling)}</b>.`}</div></div>
   <div class="detailgrid two">
     <div class="stack">
       <div class="panel"><div class="ph"><h3>Vínculo técnico</h3></div><div class="pb" style="padding:16px">
@@ -1490,6 +1596,8 @@ function osDetalhe(v,id){
       <p class="small" style="margin-top:10px">${esc(o.descricao)}</p>
     </div>
   </div>`;
+  const vp=v.querySelector("#verpdf");
+  if(vp)vp.onclick=e=>{e.preventDefault();try{const u=URL.createObjectURL(dataUrlParaBlob(getFotoLocal("ospdf_"+o.id)));window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),60000);}catch(err){toast("Não foi possível abrir o PDF.");}};
   const eqSel=v.querySelector("#eq");
   const checkNs=()=>{
     const al=v.querySelector("#nseqalert");
