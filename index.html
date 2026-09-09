@@ -77,6 +77,12 @@ button{font:inherit;cursor:pointer}
 .nav a:hover{background:var(--surface-2);color:var(--ink)}
 .nav a.on{background:var(--accent-soft);color:var(--accent-deep);font-weight:600}
 .nav a.on .ic{opacity:1}
+.nav a>span{flex:1;min-width:0}
+.nav a.lk{opacity:.6}
+.nav a .lkic{width:13px;height:13px;flex:none;opacity:.75;stroke-width:2}
+.protag{display:inline-flex;align-items:center;gap:4px;font-family:var(--sans,inherit);font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-deep);background:var(--accent-soft);border-radius:100px;padding:2px 7px;vertical-align:middle}
+.maistile.lk{opacity:.72}
+.maistile.lk b{display:flex;align-items:center;gap:6px}
 .nav .grp{font-size:10.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--ink-3);padding:16px 10px 5px;font-weight:600}
 .side .foot{padding:10px 14px;border-top:1px solid var(--line);font-size:11px;color:var(--ink-3)}
 .main{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -327,6 +333,11 @@ input[type=checkbox]{min-height:0}
 .logincard .btn:not(.primary){background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.18);color:#fff;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 .logincard #loginHint{margin-top:6px;line-height:1.55;color:rgba(255,255,255,.6);font-size:11.5px}
 .logincard #loginSub{color:rgba(255,255,255,.72)}
+.logincard #loginToggle{color:var(--brand-lime);font-weight:600}
+.logincard #loginOk{border-color:rgba(88,232,136,.4);background:rgba(88,232,136,.12);color:#eafff1}
+.segrow{display:flex;gap:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:100px;padding:4px}
+.segbtn{flex:1;border:0;background:transparent;color:rgba(255,255,255,.72);font:inherit;font-size:13px;font-weight:600;padding:8px 6px;border-radius:100px;cursor:pointer}
+.segbtn.on{background:var(--accent);color:var(--on-accent)}
 .logincard .tagline{margin-top:22px;text-align:center;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.55)}
 :root[data-hidden-app] .app,:root[data-hidden-app] .tabbar{display:none!important}
 
@@ -381,15 +392,25 @@ input[type=checkbox]{min-height:0}
     <h1 id="loginTitle">Banheza<i>Assist</i></h1>
     <p id="loginSub">Entre com seu e-mail e senha</p>
     <div id="loginFields">
+      <label class="f" id="fNome" hidden>Seu nome<input id="loginNome" autocomplete="name" autocapitalize="words"></label>
       <label class="f">E-mail<input id="loginUser" type="email" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
       <label class="f" style="margin-top:8px">Senha<input id="loginPass" type="password" autocomplete="current-password"></label>
+      <div id="fSignup" hidden style="margin-top:12px">
+        <div class="segrow">
+          <button type="button" class="segbtn on" data-nm="empresa">Criar empresa</button>
+          <button type="button" class="segbtn" data-nm="convite">Tenho convite</button>
+        </div>
+        <label class="f" id="fCodigo" hidden style="margin-top:10px">Código de convite<input id="loginCodigo" autocapitalize="characters" spellcheck="false" placeholder="BZ-XXXXXX"></label>
+      </div>
     </div>
     <div class="alertbox crit" id="loginErr" hidden></div>
+    <div class="alertbox info" id="loginOk" hidden></div>
     <button class="btn primary" type="submit" id="loginBtn" style="width:100%">Entrar</button>
     <div id="loginDemo" hidden style="display:flex;flex-direction:column;gap:8px">
       <button type="button" class="btn primary" data-demo="admin" style="width:100%">Entrar como Administrador</button>
       <button type="button" class="btn" data-demo="tecnico" style="width:100%">Entrar como Técnico</button>
     </div>
+    <p class="small" style="text-align:center;margin:2px 0 0"><a href="#" id="loginToggle">Criar uma conta</a></p>
     <p class="small muted" id="loginHint"></p>
     <p class="tagline">Tecnologia que simplifica o seu trabalho.</p>
   </form>
@@ -403,6 +424,10 @@ const KEY="geracampo_v1";
    sem login válido a chave não dá acesso a nada). ===== */
 const SUPABASE_URL="https://cahfugahdvrdpymztyhz.supabase.co";
 const SUPABASE_ANON_KEY="sb_publishable_aKCOaHv4l8yzx4KDScxnFw_EsFu9ujS";
+/* ----- comercial (preencha antes de vender) ----- */
+const PRECO_PRO="[SEU PREÇO]";                 // ex.: "149"
+const LINK_ASSINATURA="[LINK MERCADO PAGO]";   // link da assinatura recorrente
+const CONTATO_BANHEZA="[seu-email@banheza.com.br]";
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const uid=p=>p+"-"+Math.random().toString(36).slice(2,8);
@@ -430,6 +455,23 @@ function compressImg(file,cb){
     img.src=rd.result;
   };
   rd.readAsDataURL(file);
+}
+/* logo da empresa — menor, mantém transparência (PNG) */
+function compressLogo(file,cb){
+  const rd=new FileReader();
+  rd.onload=()=>{const img=new Image();
+    img.onload=()=>{
+      const max=260,sc=Math.min(1,max/Math.max(img.width,img.height));
+      const cv=document.createElement("canvas");cv.width=Math.round(img.width*sc);cv.height=Math.round(img.height*sc);
+      cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);
+      try{cb(cv.toDataURL("image/png"));}catch(e){cb(rd.result);}
+    };
+    img.onerror=()=>cb(rd.result);img.src=rd.result;};
+  rd.readAsDataURL(file);
+}
+function aplicarLogo(){
+  const src=(CFG().logo)||"assets/mark-green.png";
+  document.querySelectorAll(".brand .mark img,.loginmark img").forEach(im=>{ if(im.getAttribute("src")!==src)im.src=src; });
 }
 
 /* ---------- leitor de QR Code / código de barras (câmera) ---------- */
@@ -707,6 +749,7 @@ const COLS_MEM=["configs","clientes","equipamentos","veiculos","preventivas","pr
 function normalizeDB(){
   if(!DB||typeof DB!=="object")DB=seed();
   COLS_MEM.forEach(k=>{if(!Array.isArray(DB[k]))DB[k]=[];});
+  if(!Array.isArray(DB.convites))DB.convites=[];
   DB.schema=1;
   DB.abastecimentos.forEach(a=>{if(!a.categoria)a.categoria="combustivel";});
   if(!DB.configs.length)DB.configs=[{id:"main",empresa:"Minha Empresa",equipLabel:"Equipamento",equipLabelPlural:"Equipamentos",setorLabel:"Setor atendido",osExterna:"",medicoes:[]}];
@@ -763,21 +806,40 @@ function carregarSnap(){
   for(const c of COLS_DADOS)snap[c]=new Map((DB[c]||[]).map(r=>[r.id,JSON.stringify(r)]));
   snap.__cfg=JSON.stringify(CFG());
 }
+let EMPRESA=null;
 async function carregarTudo(){
   const nomes=COLS_DADOS.map(c=>TAB[c]);
   const res=await Promise.all([
     ...nomes.map(t=>supa.from(t).select("*")),
     supa.from("config_empresa").select("dados").maybeSingle(),
     supa.from("perfis").select("id,nome,papel,ativo"),
-    supa.from("auditoria").select("*").order("ts",{ascending:false}).limit(300)
+    supa.from("auditoria").select("*").order("ts",{ascending:false}).limit(300),
+    supa.from("empresas").select("*").maybeSingle(),
+    supa.from("convites").select("*").order("criado_em",{ascending:false})
   ]);
   COLS_DADOS.forEach((c,i)=>{const{data,error}=res[i];if(error)throw error;DB[c]=(data||[]).map(linhaParaReg);});
   const cfg=res[nomes.length].data;
   DB.configs=[{id:"main",...(cfg&&cfg.dados||{})}];
   DB.tecnicos=(res[nomes.length+1].data||[]).map(p=>({id:p.id,nome:p.nome,papel:p.papel,excluido:p.ativo?undefined:{}}));
   DB.auditoria=(res[nomes.length+2].data||[]).map(a=>({id:String(a.id),ts:a.ts,usuario:a.usuario_nome,acao:a.acao,entidade:a.entidade,entidadeId:a.entidade_id,detalhe:a.detalhe}));
+  EMPRESA=res[nomes.length+3].data||EMPRESA;
+  DB.convites=(res[nomes.length+4].data||[]);
   normalizeDB();persistLocal();carregarSnap();
 }
+function planoEfetivo(){
+  if(MODO_DEMO)return "pro";
+  const e=EMPRESA||{},ag=Date.now();
+  if(e.assinatura_ate&&new Date(e.assinatura_ate).getTime()>=ag)return "pro";
+  if(e.trial_ate&&new Date(e.trial_ate).getTime()>=ag)return "trial";
+  return "free";
+}
+function diasTrial(){
+  if(!EMPRESA||!EMPRESA.trial_ate)return 0;
+  return Math.ceil((new Date(EMPRESA.trial_ate).getTime()-Date.now())/86400000);
+}
+/* telas liberadas quando o trial acaba (plano "free") */
+const ROTAS_FREE=["painel","jornada","manutencoes","clientes","equipamentos","mais","config","auditoria","assinar","conta"];
+function rotaLiberada(r){ return planoEfetivo()!=="free" || ROTAS_FREE.includes(r); }
 function persist(){
   persistLocal();
   if(MODO_DEMO||!supa||!PERFIL)return;
@@ -853,6 +915,10 @@ function assinarRealtime(){
   ch.on("postgres_changes",{event:"INSERT",schema:"public",table:"auditoria"},p=>{
     const a=p.new;if(a&&!DB.auditoria.some(x=>x.id===String(a.id)))
       DB.auditoria.unshift({id:String(a.id),ts:a.ts,usuario:a.usuario_nome,acao:a.acao,entidade:a.entidade,entidadeId:a.entidade_id,detalhe:a.detalhe});
+  });
+  ch.on("postgres_changes",{event:"*",schema:"public",table:"empresas"},p=>{ if(p.new){EMPRESA=p.new;rerenderRT();} });
+  ch.on("postgres_changes",{event:"*",schema:"public",table:"convites"},()=>{
+    supa.from("convites").select("*").order("criado_em",{ascending:false}).then(({data})=>{if(data){DB.convites=data;rerenderRT();}});
   });
   ch.subscribe();
 }
@@ -946,7 +1012,9 @@ const ICONS={
   sliders:'<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
   shield:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>',
   menu:'<circle cx="5" cy="6" r="1.6"/><circle cx="5" cy="12" r="1.6"/><circle cx="5" cy="18" r="1.6"/><path d="M11 6h10M11 12h10M11 18h10"/>',
-  wallet:'<path d="M4 7a2 2 0 0 1 2-2h12v4M4 7v10a2 2 0 0 0 2 2h13v-4M4 7h14M17 13h4v3h-4a1.5 1.5 0 0 1 0-3Z"/>'
+  wallet:'<path d="M4 7a2 2 0 0 1 2-2h12v4M4 7v10a2 2 0 0 0 2 2h13v-4M4 7h14M17 13h4v3h-4a1.5 1.5 0 0 1 0-3Z"/>',
+  lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  spark:'<path d="M12 2 9.2 8.6 2 9.3l5.5 4.9L5.8 22 12 18.2 18.2 22l-1.7-7.8L22 9.3l-7.2-.7z"/>'
 };
 /* tab bar do celular: 4 ações principais + Mais */
 const TABS=[
@@ -973,7 +1041,7 @@ const MAIS=()=>[
 const svgIc=(name,cls)=>`<svg class="${cls||"ic"}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||""}</svg>`;
 function renderNav(){
   $("#nav").innerHTML=NAV().map(n=>n.g?`<div class="grp">${n.g}</div>`:
-    `<a href="#/${n.r}" data-r="${n.r}">${svgIc(n.i)}${esc(n.t)}</a>`).join("");
+    `<a href="#/${n.r}" data-r="${n.r}" class="${rotaLiberada(n.r)?"":"lk"}">${svgIc(n.i)}<span>${esc(n.t)}</span>${rotaLiberada(n.r)?"":svgIc("lock","lkic")}</a>`).join("");
 }
 function renderTabs(){
   $("#tabbar").innerHTML=TABS.map(t=>`<a href="#/${t.r}" data-tab="${t.r}">${svgIc(t.i)}${t.t}</a>`).join("");
@@ -984,24 +1052,43 @@ function renderRole(){ // atualiza o chip do usuário logado + identidade
   $("#uname").textContent=(nome.split(/\s+/)[0]||"—");
   $("#userbtn").title=nome+" · "+perfilNome();
   const co=$("#footco");if(co)co.textContent=(CFG().empresa||"Banheza Assist")+(CFG().osExterna?" · OS no "+CFG().osExterna:"");
-  const bt=document.querySelector(".brand span");if(bt&&CFG().empresa&&CFG().empresa!=="Minha Empresa")bt.textContent=CFG().empresa;
+  const bd=document.querySelector(".brand b");
+  if(bd){ if(CFG().empresa&&CFG().empresa!=="Minha Empresa"){bd.textContent=CFG().empresa;bd.style.textTransform="none";bd.style.letterSpacing="0";}
+    else bd.innerHTML='Banheza<i>Assist</i>'; }
+  const bt=document.querySelector(".brand span");if(bt)bt.textContent=CFG().empresa&&CFG().empresa!=="Minha Empresa"?"por Banheza Assist":"Manutenção & campo";
+  aplicarLogo();
   updateSync();
 }
 /* ---------- login ---------- */
 function autenticado(){return !!PERFIL;}
+let LOGIN_MODO="entrar", NOVA_MODO="empresa";
+function atualizarLoginModo(){
+  const criar=LOGIN_MODO==="criar";
+  $("#loginErr").hidden=true;$("#loginOk").hidden=true;
+  $("#fNome").hidden=!criar;$("#fSignup").hidden=!criar;
+  $("#fCodigo").hidden=!(criar&&NOVA_MODO==="convite");
+  $("#loginSub").textContent=criar?"Crie sua conta e comece o teste de 30 dias":"Entre com seu e-mail e senha";
+  $("#loginBtn").textContent=criar?"Criar conta":"Entrar";
+  $("#loginPass").autocomplete=criar?"new-password":"current-password";
+  $("#loginToggle").textContent=criar?"Já tenho conta — entrar":"Criar uma conta";
+  document.querySelectorAll("#fSignup .segbtn").forEach(x=>x.classList.toggle("on",x.dataset.nm===NOVA_MODO));
+}
 function mostrarLogin(motivo){
-  $("#loginErr").hidden=true;$("#loginPass").value="";
+  $("#loginErr").hidden=true;$("#loginOk").hidden=true;$("#loginPass").value="";
   const emp=(CFG().empresa&&CFG().empresa!=="Minha Empresa")?CFG().empresa:"";
   $("#loginTitle").innerHTML=emp?esc(emp):'Banheza<i>Assist</i>';
+  const conv=new URLSearchParams(location.search).get("convite")||new URLSearchParams((location.hash.split("?")[1]||"")).get("convite");
+  if(conv&&!MODO_DEMO){LOGIN_MODO="criar";NOVA_MODO="convite";$("#loginCodigo").value=conv.toUpperCase();}
   if(MODO_DEMO){
     $("#loginSub").textContent="Modo demonstração";
-    $("#loginFields").hidden=true;$("#loginBtn").hidden=true;$("#loginDemo").hidden=false;
+    $("#loginFields").hidden=true;$("#loginBtn").hidden=true;$("#loginDemo").hidden=false;$("#loginToggle").hidden=true;
     $("#loginHint").textContent=(motivo?motivo+" ":"")+"Sem servidor — dados só neste navegador, para demonstração.";
   }else{
-    $("#loginSub").textContent="Entre com seu e-mail e senha";
-    $("#loginFields").hidden=false;$("#loginBtn").hidden=false;$("#loginDemo").hidden=true;
-    $("#loginHint").textContent=motivo||"Não há tela de cadastro — o administrador cria os usuários no painel do Supabase (Authentication → Add user).";
-    setTimeout(()=>$("#loginUser").focus(),50);
+    $("#loginFields").hidden=false;$("#loginBtn").hidden=false;$("#loginDemo").hidden=true;$("#loginToggle").hidden=false;
+    atualizarLoginModo();
+    if(motivo){$("#loginHint").textContent=motivo;}
+    else{$("#loginHint").textContent="Cada empresa cria a própria conta. Técnicos entram com um código de convite do administrador.";}
+    setTimeout(()=>$((LOGIN_MODO==="criar"?"#loginNome":"#loginUser")).focus(),50);
   }
   $("#loginHint").hidden=false;
   document.documentElement.setAttribute("data-hidden-app","");
@@ -1038,6 +1125,30 @@ async function fazerLogin(){
   try{ await entrar(r.data.session); }
   catch(e){ $("#loginErr").textContent="Erro ao carregar dados: "+(e.message||e);$("#loginErr").hidden=false; }
 }
+async function criarConta(){
+  if(MODO_DEMO)return;
+  const nome=$("#loginNome").value.trim(), email=$("#loginUser").value.trim(), pass=$("#loginPass").value;
+  const codigo=NOVA_MODO==="convite"?$("#loginCodigo").value.trim().toUpperCase():"";
+  const err=m=>{$("#loginErr").textContent=m;$("#loginErr").hidden=false;};
+  $("#loginErr").hidden=true;$("#loginOk").hidden=true;
+  if(!nome)return err("Informe o seu nome.");
+  if(!email||!/.+@.+\..+/.test(email))return err("Informe um e-mail válido.");
+  if(pass.length<6)return err("A senha precisa ter ao menos 6 caracteres.");
+  if(NOVA_MODO==="convite"&&!codigo)return err("Cole o código de convite que o administrador te passou.");
+  const btn=$("#loginBtn");btn.disabled=true;btn.textContent="Criando…";
+  let r;
+  try{ r=await supa.auth.signUp({email,password:pass,options:{data:{nome,codigo}}}); }
+  catch(e){ r={error:{message:String(e)}}; }
+  btn.disabled=false;btn.textContent="Criar conta";
+  if(r.error){
+    return err(/already registered|already exists/i.test(r.error.message)?"Já existe uma conta com esse e-mail — entre em vez de criar.":(r.error.message||"Não foi possível criar a conta."));
+  }
+  if(r.data.session){ try{ await entrar(r.data.session); }catch(e){ err("Conta criada, mas houve um erro ao carregar: "+(e.message||e)); } return; }
+  // precisa confirmar e-mail
+  LOGIN_MODO="entrar";atualizarLoginModo();
+  $("#loginOk").textContent="Conta criada. Confirme pelo link que enviamos ao seu e-mail e depois entre aqui.";
+  $("#loginOk").hidden=false;$("#loginPass").value="";
+}
 function demoEntrar(papel){
   PERFIL={id:"demo",nome:papel==="admin"?"Administrador (demo)":"Técnico (demo)",papel,empresa_id:"demo"};
   VIEWER.userId="demo";
@@ -1045,19 +1156,63 @@ function demoEntrar(papel){
   esconderLogin();renderNav();renderRole();location.hash="#/painel";router();
 }
 async function entrar(session){
-  const {data:p,error}=await supa.from("perfis").select("*").eq("id",session.user.id).maybeSingle();
-  if(error)throw error;
-  if(!p){toast("Seu perfil ainda não foi criado. Avise o administrador.");await supa.auth.signOut();return mostrarLogin("Perfil não encontrado. Peça ao administrador.");}
-  if(!p.ativo){await supa.auth.signOut();return mostrarLogin("Seu acesso está inativo.");}
+  for(let i=0;i<8;i++){ // o perfil é criado por trigger logo após o signUp — pode levar um instante
+    var {data:p,error}=await supa.from("perfis").select("*").eq("id",session.user.id).maybeSingle();
+    if(error)throw error;
+    if(p)break;
+    await new Promise(r=>setTimeout(r,350));
+  }
+  if(!p){await supa.auth.signOut();return mostrarLogin("Não consegui carregar seu perfil. Tente entrar de novo em alguns segundos.");}
+  if(!p.ativo||!p.empresa_id){
+    await supa.auth.signOut();
+    return mostrarLogin(!p.empresa_id
+      ? "Código de convite inválido ou vencido. Peça um novo convite ao administrador da empresa."
+      : "Seu acesso está desativado. Fale com o administrador da sua empresa.");
+  }
   PERFIL={...p,email:session.user.email};VIEWER.userId=p.id;saveViewer();
   SYNC.mode="conectando";updateSync();
   await carregarTudo();
   esconderLogin();dispensarSplash();renderNav();renderRole();
-  if(!location.hash||location.hash==="#/"||location.hash==="#/mais")location.hash="#/painel";
-  router();
   assinarRealtime();
   SYNC.mode="ok";SYNC.ts=Date.now();updateSync();
+  if(precisaOnboarding()){ router(); abrirOnboarding(); return; }
+  if(!location.hash||location.hash==="#/"||location.hash==="#/mais")location.hash="#/painel";
+  router();
   toast("Bem-vindo, "+p.nome.split(/\s+/)[0]+".");
+}
+function precisaOnboarding(){
+  return ehAdmin() && (!CFG().empresa || CFG().empresa==="Minha Empresa") && !CFG()._onbFeito;
+}
+function abrirOnboarding(){
+  const c=CFG();let logoData=c.logo||null;
+  modal({title:"Bem-vindo ao Banheza Assist",wide:true,body:`
+    <p class="small muted" style="margin:0 0 14px">Vamos configurar a sua empresa. Você pode mudar tudo depois em Configurações.</p>
+    <div class="formgrid">
+      <label class="f full">Nome da empresa <span class="rq">*</span><input id="obEmp" value="${esc(c.empresa&&c.empresa!=="Minha Empresa"?c.empresa:"")}" placeholder="Como aparece para a sua equipe"></label>
+      <label class="f">Como você chama o equipamento<input id="obEq" value="${esc(c.equipLabel||"Equipamento")}" placeholder="Gerador, Bomba, Elevador…"></label>
+      <label class="f">No plural<input id="obEqP" value="${esc(c.equipLabelPlural||"Equipamentos")}"></label>
+      <label class="f full">Rótulo do "setor / local atendido"<input id="obSetor" value="${esc(c.setorLabel||"Setor atendido")}" placeholder="Piscina, Andar, Linha de produção…"></label>
+      <label class="f full">Logo da empresa (opcional)<input id="obLogo" type="file" accept="image/*"></label>
+    </div>
+    <div id="obPrev" style="margin-top:10px"></div>`,
+    footer:`<button class="btn primary" id="obOk">Concluir e começar</button>`});
+  const prev=()=>{$("#obPrev").innerHTML=logoData?`<img src="${logoData}" alt="" style="max-height:56px;border-radius:10px;border:1px solid var(--line);background:#fff;padding:4px">`:"";};
+  prev();
+  $("#obLogo").onchange=e=>{const f=e.target.files[0];if(f)compressLogo(f,d=>{logoData=d;prev();});};
+  $("#obOk").onclick=async()=>{
+    const nome=$("#obEmp").value.trim();if(!nome)return toast("Informe o nome da empresa.");
+    const cc=CFG();
+    cc.empresa=nome;
+    cc.equipLabel=$("#obEq").value.trim()||"Equipamento";cc.equipLabelPlural=$("#obEqP").value.trim()||"Equipamentos";
+    cc.setorLabel=$("#obSetor").value.trim()||"Setor atendido";
+    if(logoData)cc.logo=logoData;
+    cc._onbFeito=true;
+    audit("Configuração","Empresa","",nome);
+    try{ await supa.rpc("definir_nome_empresa",{p_nome:nome}); }catch(e){}
+    persist();closeModal();renderNav();renderRole();
+    location.hash="#/painel";router();
+    toast("Tudo pronto! Você tem 30 dias de teste com todos os recursos.");
+  };
 }
 async function logout(){
   closeModal();
@@ -1065,7 +1220,7 @@ async function logout(){
   audit("Logout","Sessão",PERFIL?.id||"","");
   try{await flush();}catch(e){}
   try{await supa.auth.signOut();}catch(e){}
-  PERFIL=null;
+  PERFIL=null;EMPRESA=null;LOGIN_MODO="entrar";
   mostrarLogin();
 }
 function contaSheet(){
@@ -1139,8 +1294,9 @@ function router(){
   document.querySelectorAll("#tabbar a").forEach(a=>a.classList.toggle("on",a.dataset.tab===activeTab));
   const inDetalhe=rest.length>0&&rest[0]!=="novo";
   $("#app").classList.toggle("hasback",inDetalhe||(!TABROUTES.includes(r)&&r!=="mais"&&!!ROUTES[r]));
-  const fn=ROUTES[r]||ROUTES.painel;
-  $("#crumb").textContent=r==="equipamentos"?navEquip():(crumbMap[r]||"Painel");
+  let fn=ROUTES[r]||ROUTES.painel;
+  if(ROUTES[r]&&!rotaLiberada(r)){fn=ROUTES.assinar;$("#crumb").textContent="Assinar";}
+  else $("#crumb").textContent=r==="equipamentos"?navEquip():(crumbMap[r]||"Painel");
   $("#view").innerHTML="";
   try{fn($("#view"),rest);}catch(e){$("#view").innerHTML=`<div class="alertbox crit">Erro ao renderizar: ${esc(e.message)}</div>`;console.error(e);}
   window.scrollTo(0,0);
@@ -1153,7 +1309,7 @@ ROUTES.mais=(v)=>{
   const u=usuarioAtual();
   v.innerHTML=`<div class="pagehead"><h1>Mais</h1><p>Cadastros e gestão. As quatro ações do dia a dia ficam na barra de baixo.</p></div>
   <div class="maisgrid" style="margin-bottom:16px">
-    ${MAIS().map(m=>`<a class="maistile" href="#/${m.r}">${svgIc(m.i)}<b>${esc(m.t)}</b><span>${esc(m.d)}</span></a>`).join("")}
+    ${MAIS().map(m=>{const lk=!rotaLiberada(m.r);return `<a class="maistile${lk?" lk":""}" href="#/${m.r}">${svgIc(m.i)}<b>${esc(m.t)}${lk?'<span class="protag">Pro</span>':""}</b><span>${esc(lk?"Disponível no plano Pro":m.d)}</span></a>`;}).join("")}
   </div>
   <div class="card pad" style="margin-bottom:14px">
     <h3 style="margin-bottom:10px">Você</h3>
@@ -1170,12 +1326,38 @@ ROUTES.mais=(v)=>{
   v.querySelector("#msair").onclick=()=>logout();
 };
 
+/* ============ ASSINAR / PLANO ============ */
+ROUTES.assinar=(v)=>{
+  const p=planoEfetivo(), d=diasTrial(), adm=ehAdmin();
+  const recursos=["Ordens de serviço e importação de OS em PDF","Veículos, frota e preventivas por KM/tempo","Peças, estoque e leitor de código de barras","Gastos & despesas com leitor de nota fiscal","Relatórios em PDF e CSV, e indicadores","Envio do relatório de manutenção ao cliente"];
+  const linkOk=LINK_ASSINATURA&&LINK_ASSINATURA[0]!=="[";
+  v.innerHTML=`<div class="pagehead"><h1>${p==="free"?"Seu teste terminou":"Plano Banheza Assist"}</h1>
+    <p>${p==="trial"?`Você está no teste gratuito — faltam <b>${d} dia${d===1?"":"s"}</b>. Tudo liberado até lá.`
+      :p==="free"?"O teste de 30 dias acabou. Jornada, Manutenções, Clientes e Equipamentos continuam liberados; o restante volta com o plano Pro."
+      :"Sua assinatura Pro está ativa."+(EMPRESA&&EMPRESA.assinatura_ate?" Válida até "+fmtDate(EMPRESA.assinatura_ate)+".":"")}</p></div>
+  ${p==="pro"?'<div class="alertbox info" style="max-width:520px"><span>✓</span><div>Nada a fazer aqui — todos os recursos estão liberados.</div></div>':`
+  <div class="card pad" style="max-width:520px">
+    <span class="protag" style="font-size:11px;padding:4px 10px">Plano Pro</span>
+    <div style="font-family:var(--display);font-size:34px;font-weight:700;color:var(--ink);margin:12px 0 2px">R$ ${esc(PRECO_PRO)}<span style="font-size:15px;font-weight:500;color:var(--ink-3)"> /mês</span></div>
+    <p class="small muted" style="margin:0 0 18px">por empresa · usuários ilimitados</p>
+    <div class="stack" style="gap:9px;margin-bottom:20px">
+      ${recursos.map(r=>`<div style="display:flex;gap:9px;font-size:14px;color:var(--ink-2)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"/></svg>${esc(r)}</div>`).join("")}
+    </div>
+    ${adm?(linkOk?`<a class="btn primary" href="${esc(LINK_ASSINATURA)}" target="_blank" rel="noopener" style="width:100%">Assinar o plano Pro</a>
+      <p class="small muted" style="margin-top:12px;text-align:center">Depois de pagar, o acesso é liberado. Precisa de ajuda? <a href="mailto:${esc(CONTATO_BANHEZA)}">fale com a Banheza</a>.</p>`
+      :`<div class="alertbox"><span>!</span><div>Link de assinatura ainda não configurado. Fale com a Banheza: <a href="mailto:${esc(CONTATO_BANHEZA)}">${esc(CONTATO_BANHEZA)}</a></div></div>`)
+      :`<div class="alertbox"><span>!</span><div>Peça ao administrador da sua empresa para assinar o plano Pro.</div></div>`}
+  </div>`}`;
+};
+
 /* ============ PAINEL ============ */
 ROUTES.painel=v=>{
   const i=ind();const j=jornadaAberta();
   v.innerHTML=`
   <div class="pagehead"><h1>Painel operacional</h1>
     <p>Olá, ${esc((usuarioAtual()?.nome||"").split(/\s+/)[0]||"")}. Visão do dia: jornada, atendimento, histórico e estoque de campo.</p></div>
+  ${planoEfetivo()==="trial"&&diasTrial()<=15?`<div class="alertbox" style="margin-bottom:16px"><span>◔</span><div>Teste gratuito — faltam <b>${diasTrial()} dia${diasTrial()===1?"":"s"}</b>. <a href="#/assinar">Ver o plano Pro</a></div></div>`:
+    planoEfetivo()==="free"?`<div class="alertbox crit" style="margin-bottom:16px"><span>!</span><div>Seu teste terminou. Jornada e manutenções seguem liberadas; o resto volta com o <a href="#/assinar">plano Pro</a>.</div></div>`:""}
   ${j?`<div class="alertbox info" style="margin-bottom:16px"><span>▶</span><div>Jornada em andamento desde ${fmtTime(j.criadoEm||j.criadaEm)} · ${veiNome(j.veiculoId)} — <a href="#/jornada">abrir jornada</a></div></div>`:
     `<div class="alertbox" style="margin-bottom:16px"><span>◔</span><div>Nenhuma jornada aberta. <a href="#/jornada">Iniciar jornada</a> para registrar deslocamentos e atendimentos.</div></div>`}
   <div class="kpis" style="margin-bottom:20px">
@@ -2735,20 +2917,45 @@ ROUTES.fluxo=(v)=>{
   </div>`;
 };
 
+function gerarCodigoConvite(){
+  const s="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let c="BZ-";
+  for(let i=0;i<6;i++)c+=s[Math.floor(Math.random()*s.length)];
+  return c;
+}
+async function conviteModal(){
+  if(MODO_DEMO)return toast("Indisponível no modo demonstração.");
+  if(!ehAdmin())return toast("Só o administrador convida.");
+  modal({title:"Convidar para a equipe",body:`
+    <p class="small muted" style="margin:0 0 12px">Gere um código, passe para a pessoa, e ela se cadastra sozinha com e‑mail e senha.</p>
+    <div class="formgrid">
+      <label class="f">Nível de acesso<select id="cvPapel"><option value="tecnico">Técnico</option><option value="admin">Administrador</option></select></label>
+      <label class="f">Validade<select id="cvExp"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="0">Sem prazo</option></select></label>
+      <label class="f">Quantas pessoas podem usar<select id="cvUsos"><option value="1" selected>1 pessoa</option><option value="5">até 5</option><option value="20">até 20</option></select></label>
+    </div>
+    <div id="cvResult" style="margin-top:14px"></div>`,
+    footer:`<button class="btn" onclick="closeModal()">Fechar</button><button class="btn primary" id="cvGerar">Gerar convite</button>`});
+  $("#cvGerar").onclick=async()=>{
+    const papel=$("#cvPapel").value, dias=+$("#cvExp").value, usos=+$("#cvUsos").value;
+    const codigo=gerarCodigoConvite();
+    const row={codigo,empresa_id:PERFIL.empresa_id,papel,usos_max:usos,usos:0,ativo:true,
+      expira_em:dias?new Date(Date.now()+dias*86400000).toISOString():null};
+    const {error}=await supa.from("convites").insert(row);
+    if(error)return toast(/policy|permission/i.test(error.message)?"Só administrador convida.":(error.message||"Erro ao gerar."));
+    DB.convites.unshift(row);audit("Criação","Convite",codigo,PAPEIS[papel]?.nome||papel);
+    const link=location.origin+location.pathname+"?convite="+codigo;
+    $("#cvResult").innerHTML=`<div class="card pad" style="background:var(--surface-2)">
+      <div class="small muted">Código</div><div class="mono" style="font-size:20px;font-weight:700;letter-spacing:.06em">${esc(codigo)}</div>
+      <div class="small muted" style="margin-top:10px">Link direto</div><div class="small mono" style="word-break:break-all">${esc(link)}</div>
+      <div class="actionbar" style="margin-top:12px"><button class="btn sm" id="cvCopyCode">Copiar código</button><button class="btn sm" id="cvCopyLink">Copiar link</button></div></div>`;
+    const cp=(txt,msg)=>{(navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>toast(msg)).catch(()=>prompt("Copie:",txt));};
+    $("#cvCopyCode").onclick=()=>cp(codigo,"Código copiado.");
+    $("#cvCopyLink").onclick=()=>cp(link,"Link copiado.");
+    persist();
+  };
+}
 function usuarioModal(t){
   if(MODO_DEMO)return toast("Indisponível no modo demonstração.");
-  if(!t){
-    modal({title:"Adicionar usuário",body:`
-      <p class="small">Para adicionar alguém à equipe:</p>
-      <ol class="small" style="line-height:1.9;padding-left:18px;margin:6px 0">
-        <li>No painel do <b>Supabase</b> → <b>Authentication → Users → Add user</b></li>
-        <li>Informe o e-mail e uma senha e marque <b>Auto Confirm User</b></li>
-        <li>Volte aqui — a pessoa aparece na lista abaixo e você define o <b>nome</b> e o <b>nível de acesso</b></li>
-      </ol>
-      <p class="small muted" style="margin:0">Assim ninguém precisa receber e-mail de confirmação. Em breve dará para criar direto por aqui.</p>`,
-      footer:`<button class="btn primary" onclick="closeModal()">Entendi</button>`});
-    return;
-  }
+  if(!t)return conviteModal();
   modal({title:"Editar usuário",body:`<div class="stack">
     <label class="f">Nome <span class="rq">*</span><input id="un" value="${esc(t.nome||"")}"></label>
     <label class="f">Nível de acesso<select id="up">${Object.entries(PAPEIS).map(([k,x])=>`<option value="${k}"${t.papel===k?" selected":""}>${x.nome}</option>`).join("")}</select></label>
@@ -2774,7 +2981,12 @@ ROUTES.config=(v)=>{
   v.innerHTML=`<div class="pagehead"><h1>Configurações</h1><p>Adapte o app à sua empresa: identidade, campos e usuários. As mudanças sincronizam para todos.</p></div>
 
   <div class="card pad" style="margin-bottom:16px">
-    <h3 style="margin-bottom:10px">Identidade da empresa</h3>
+    <div class="between" style="margin-bottom:10px"><h3>Identidade da empresa</h3>
+      <span class="pill ${planoEfetivo()==="pro"?"good":planoEfetivo()==="trial"?"accent":"crit"}">${planoEfetivo()==="pro"?"Plano Pro":planoEfetivo()==="trial"?"Teste · "+diasTrial()+" dia(s)":"Teste encerrado"}</span></div>
+    <div class="row" style="align-items:center;gap:14px;margin-bottom:14px">
+      <img id="cLogoPrev" src="${esc(c.logo||"assets/mark-green.png")}" alt="" style="height:52px;width:auto;max-width:150px;border-radius:10px;border:1px solid var(--line);background:#fff;padding:4px;object-fit:contain">
+      ${adm?`<label class="btn sm" style="cursor:pointer">Trocar logo<input type="file" id="cLogo" accept="image/*" hidden></label>${c.logo?`<button class="btn sm danger" id="cLogoRm">Remover</button>`:""}`:""}
+    </div>
     <div class="formgrid">
       <label class="f full">Nome da empresa<input id="cEmpresa" value="${esc(c.empresa||"")}" ${adm?"":"disabled"}></label>
       <label class="f">Como você chama o equipamento (singular)<input id="cEqL" value="${esc(c.equipLabel||"Equipamento")}" ${adm?"":"disabled"} placeholder="Gerador, Bomba, Elevador…"></label>
@@ -2794,10 +3006,15 @@ ROUTES.config=(v)=>{
     <div class="list">${(c.medicoes||[]).map((m,ix)=>`<div class="item"><div class="t">${esc(m)}</div><span class="sp"></span>${can("editar")?`<button class="btn sm danger" data-rmmed="${ix}">Remover</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhum campo de medição. O técnico ainda pode anotar em Observações.</div>'}</div>
   </div>
 
-  <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Usuários e acesso</h3>${ehAdmin()?`<button class="btn sm" id="addTec">+ Usuário</button>`:""}</div>
+  <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Equipe e acesso</h3>${ehAdmin()?`<button class="btn sm" id="addTec">Convidar</button>`:""}</div>
     <div class="list">${DB.tecnicos.map(t=>`<div class="item"><span class="avatar">${esc(iniciais(t.nome))}</span>
       <div><div class="t">${esc(t.nome)} ${t.id===PERFIL?.id?'<span class="pill accent">você</span>':""}${t.excluido?' <span class="pill">inativo</span>':""}</div><div class="d">${esc(PAPEIS[t.papel]?.nome||t.papel)}</div></div><span class="sp"></span>
       ${ehAdmin()?`<button class="btn sm" data-edtec="${t.id}">Editar</button>`:""}</div>`).join("")||'<div class="emptyst small">Nenhum usuário.</div>'}</div>
+    ${ehAdmin()&&(DB.convites||[]).filter(cv=>cv.ativo&&cv.usos<cv.usos_max&&(!cv.expira_em||new Date(cv.expira_em)>new Date())).length?`
+    <div class="ph" style="border-top:1px solid var(--line-2)"><h3>Convites em aberto</h3></div>
+    <div class="list">${DB.convites.filter(cv=>cv.ativo&&cv.usos<cv.usos_max&&(!cv.expira_em||new Date(cv.expira_em)>new Date())).map(cv=>`
+      <div class="item"><div><div class="t mono">${esc(cv.codigo)}</div><div class="d">${esc(PAPEIS[cv.papel]?.nome||cv.papel)} · ${cv.usos_max-cv.usos} uso(s)${cv.expira_em?" · expira "+fmtDate(cv.expira_em):""}</div></div><span class="sp"></span>
+      <button class="btn sm" data-cvcopy="${esc(cv.codigo)}">Copiar link</button><button class="btn sm danger" data-cvrm="${esc(cv.codigo)}">Cancelar</button></div>`).join("")}</div>`:""}
   </div>
 
   <div class="card pad" style="margin-bottom:16px"><h3 style="margin-bottom:8px">Segurança e dados</h3>
@@ -2841,8 +3058,23 @@ ROUTES.config=(v)=>{
     $("#ok").onclick=()=>{if(!$("#cn").value.trim())return toast("Informe o nome.");DB.camposTecnicos.push({id:uid("ct"),nome:$("#cn").value.trim(),tipo:$("#ct").value,obrig:$("#co").checked});audit("Criação","Campo técnico","");persist();closeModal();router();};
   });
   v.querySelectorAll("[data-rmct]").forEach(b=>b.onclick=()=>{const c=byId("camposTecnicos",b.dataset.rmct);c.excluido={ts:nowISO(),usuario:auditUser(),motivo:"removido em configurações"};audit("Exclusão","Campo técnico",c.id);persist();router();});
-  v.querySelector("#addTec")&&(v.querySelector("#addTec").onclick=()=>usuarioModal(null));
+  v.querySelector("#cLogo")&&(v.querySelector("#cLogo").onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    compressLogo(f,d=>{const cc=CFG();cc.logo=d;v.querySelector("#cLogoPrev").src=d;audit("Edição","Logo","main");persist();renderRole();toast("Logo atualizada.");});
+  });
+  v.querySelector("#cLogoRm")&&(v.querySelector("#cLogoRm").onclick=()=>{const cc=CFG();delete cc.logo;audit("Exclusão","Logo","main");persist();renderRole();router();});
+  v.querySelector("#addTec")&&(v.querySelector("#addTec").onclick=()=>conviteModal());
   v.querySelectorAll("[data-edtec]").forEach(b=>b.onclick=()=>usuarioModal(byId("tecnicos",b.dataset.edtec)));
+  v.querySelectorAll("[data-cvcopy]").forEach(b=>b.onclick=()=>{
+    const link=location.origin+location.pathname+"?convite="+b.dataset.cvcopy;
+    (navigator.clipboard?navigator.clipboard.writeText(link):Promise.reject()).then(()=>toast("Link de convite copiado.")).catch(()=>{prompt("Copie o link:",link);});
+  });
+  v.querySelectorAll("[data-cvrm]").forEach(b=>b.onclick=async()=>{
+    const {error}=await supa.from("convites").update({ativo:false}).eq("codigo",b.dataset.cvrm);
+    if(error)return toast("Erro ao cancelar.");
+    DB.convites=DB.convites.map(cv=>cv.codigo===b.dataset.cvrm?{...cv,ativo:false}:cv);
+    audit("Exclusão","Convite",b.dataset.cvrm);toast("Convite cancelado.");router();
+  });
   v.querySelector("#export").onclick=()=>{
     const txt=JSON.stringify(DB,null,2);
     modal({title:"Exportar dados",wide:true,body:`<p class="small muted">Cópia completa em JSON. Copie e guarde.</p>
@@ -2921,8 +3153,14 @@ try{new Image().src="assets/capa-assist.jpg";}catch(e){}
 renderNav();renderTabs();
 $("#userbtn").onclick=()=>contaSheet();
 $("#backbtn").onclick=()=>{if(history.length>1)history.back();else location.hash="#/mais";};
-$("#loginform").addEventListener("submit",e=>{e.preventDefault();fazerLogin();});
+$("#loginform").addEventListener("submit",e=>{e.preventDefault();LOGIN_MODO==="criar"?criarConta():fazerLogin();});
 document.querySelectorAll("#loginDemo [data-demo]").forEach(b=>b.onclick=()=>demoEntrar(b.dataset.demo));
+$("#loginToggle").onclick=e=>{e.preventDefault();LOGIN_MODO=LOGIN_MODO==="criar"?"entrar":"criar";atualizarLoginModo();};
+document.querySelectorAll("#fSignup .segbtn").forEach(b=>b.onclick=()=>{
+  NOVA_MODO=b.dataset.nm;
+  document.querySelectorAll("#fSignup .segbtn").forEach(x=>x.classList.toggle("on",x===b));
+  $("#fCodigo").hidden=NOVA_MODO!=="convite";
+});
 const THEMEKEY="geracampo_theme";
 try{const t=localStorage.getItem(THEMEKEY);if(t)document.documentElement.dataset.theme=t;}catch(e){}
 function applyThemeColor(){
