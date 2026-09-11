@@ -2915,12 +2915,12 @@ ROUTES.relatorios=(v)=>{
   v.innerHTML=`<div class="pagehead"><h1>Relatórios</h1><p>Documentos filtráveis para impressão, PDF ou exportação. Mesma base do restante do app — sem retrabalho de digitação.</p></div>
 
   <div class="panel repgroup interno noprint">
-    <div class="ph"><h3>Uso interno — gestão da empresa</h3><span class="pill">Não enviar ao cliente</span></div>
+    <div class="ph"><h3>Relatórios internos</h3><span class="pill">Não enviar ao cliente</span></div>
     <div class="repgrid">${Object.entries(REL_DEFS).filter(([,d])=>!d.publico).map(optBtn).join("")}</div>
   </div>
 
   <div class="panel repgroup cliente noprint">
-    <div class="ph"><h3>Pode enviar ao cliente</h3><span class="pill good">Sem custos internos</span></div>
+    <div class="ph"><h3>Laudos</h3><span class="pill good">Pode enviar ao cliente</span></div>
     <div class="repgrid">${Object.entries(REL_DEFS).filter(([,d])=>d.publico==="cliente").map(optBtn).join("")}</div>
   </div>
 
