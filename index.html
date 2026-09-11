@@ -275,6 +275,16 @@ input[type=checkbox]{min-height:0}
 .wizopt.sel .k{color:var(--accent-deep)}
 .wiznav{display:flex;gap:10px;margin-top:20px}
 .wiznav .btn{flex:1;min-height:48px}
+.repgroup{margin-bottom:14px}
+.repgroup>.ph{gap:10px}
+.repgroup.cliente>.ph{background:var(--accent-soft)}
+.repgroup.cliente>.ph h3{color:var(--accent-deep)}
+.repgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;padding:14px 18px}
+.repopt{display:flex;flex-direction:column;text-align:left;background:var(--surface);border:1.5px solid var(--line);border-radius:var(--radius-sm);padding:11px 13px;font-size:13.5px;font-weight:700;color:var(--ink);cursor:pointer}
+.repopt:hover{border-color:var(--accent)}
+.repopt .k{font-size:11.5px;font-weight:500;color:var(--ink-3);margin-top:4px;line-height:1.4}
+.repopt.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-deep)}
+.repopt.sel .k{color:var(--accent-deep)}
 .wizbig{font-size:16px;min-height:54px;padding:0 26px}
 .wizsummary{display:flex;flex-direction:column;gap:2px;margin-bottom:6px}
 .wizsummary .r{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line-2);font-size:14px}
@@ -2662,15 +2672,15 @@ ROUTES.indicadores=(v)=>{
 
 /* ============ RELATÓRIOS ============ */
 const REL_DEFS={
-  manutencoes:{nome:"Manutenções por período",filtros:["periodo","cliente","tecnico","tipo","status"]},
-  os:{nome:"Ordens de Serviço",filtros:["periodo","cliente","statusOS"]},
-  pecas:{nome:"Peças utilizadas e custo",filtros:["periodo","cliente"]},
-  jornadas:{nome:"Jornadas, KM e tempo",filtros:["periodo","tecnico","veiculo"]},
-  despesas:{nome:"Gastos & despesas",filtros:["periodo","veiculo"]},
-  preventivas:{nome:"Preventivas de veículos",filtros:["veiculo"]},
-  atendimento:{nome:"Relatório de atendimento (uma visita)",filtros:["cliente","manutencao"],publico:"cliente"},
-  prontuario:{nome:"Prontuário do equipamento (laudo)",filtros:["equipamento","periodo"],publico:"cliente"},
-  cliente:{nome:"Histórico do cliente",filtros:["cliente","periodo"],publico:"cliente"}
+  manutencoes:{nome:"Manutenções por período",desc:"Todas as manutenções do período, com técnico, peças e custo.",filtros:["periodo","cliente","tecnico","tipo","status"]},
+  os:{nome:"Ordens de Serviço",desc:"Situação e cobrança de cada ordem de serviço.",filtros:["periodo","cliente","statusOS"]},
+  pecas:{nome:"Peças utilizadas e custo",desc:"Quanto foi gasto em peças, por período.",filtros:["periodo","cliente"]},
+  jornadas:{nome:"Jornadas, KM e tempo",desc:"KM rodado, tempo e visitas por técnico.",filtros:["periodo","tecnico","veiculo"]},
+  despesas:{nome:"Gastos & despesas",desc:"Combustível, alimentação, pedágio e outros gastos.",filtros:["periodo","veiculo"]},
+  preventivas:{nome:"Preventivas de veículos",desc:"Vencimento das preventivas da frota.",filtros:["veiculo"]},
+  atendimento:{nome:"Relatório de atendimento",desc:"Laudo de uma visita — sem custos, pronto para entregar.",filtros:["cliente","manutencao"],publico:"cliente"},
+  prontuario:{nome:"Prontuário do equipamento",desc:"Histórico técnico completo de um equipamento.",filtros:["equipamento","periodo"],publico:"cliente"},
+  cliente:{nome:"Histórico do cliente",desc:"Tudo o que foi feito para um cliente no período.",filtros:["cliente","periodo"],publico:"cliente"}
 };
 ROUTES.relatorios=(v)=>{
   const hoje=new Date();
@@ -2900,18 +2910,23 @@ ROUTES.relatorios=(v)=>{
     audit("Relatório",REL_DEFS[st.tipo].nome,"",filtrosTxt());
   }
 
+  const optBtn=([k,d])=>`<button type="button" class="repopt${k===st.tipo?" sel":""}" data-rt="${k}">${esc(d.nome)}<span class="k">${esc(d.desc||"")}</span></button>`;
+
   v.innerHTML=`<div class="pagehead"><h1>Relatórios</h1><p>Documentos filtráveis para impressão, PDF ou exportação. Mesma base do restante do app — sem retrabalho de digitação.</p></div>
+
+  <div class="panel repgroup interno noprint">
+    <div class="ph"><h3>Uso interno — gestão da empresa</h3><span class="pill">Não enviar ao cliente</span></div>
+    <div class="repgrid">${Object.entries(REL_DEFS).filter(([,d])=>!d.publico).map(optBtn).join("")}</div>
+  </div>
+
+  <div class="panel repgroup cliente noprint">
+    <div class="ph"><h3>Pode enviar ao cliente</h3><span class="pill good">Sem custos internos</span></div>
+    <div class="repgrid">${Object.entries(REL_DEFS).filter(([,d])=>d.publico==="cliente").map(optBtn).join("")}</div>
+  </div>
+
   <div class="card pad noprint" style="margin-bottom:18px">
-    <div class="formgrid">
-      <label class="f">Relatório
-        <select id="rtipo">
-          <optgroup label="Uso interno — gestão da empresa">${Object.entries(REL_DEFS).filter(([,d])=>!d.publico).map(([k,d])=>`<option value="${k}"${k===st.tipo?" selected":""}>${d.nome}</option>`).join("")}</optgroup>
-          <optgroup label="Pode enviar ao cliente">${Object.entries(REL_DEFS).filter(([,d])=>d.publico==="cliente").map(([k,d])=>`<option value="${k}"${k===st.tipo?" selected":""}>${d.nome}</option>`).join("")}</optgroup>
-        </select></label>
-      <div id="rfiltros" style="display:contents"></div>
-    </div>
-    <p class="small" id="rbadge" style="margin-top:10px"></p>
-    <div class="actionbar" style="margin-top:6px">
+    <div class="formgrid" id="rfiltros"></div>
+    <div class="actionbar" style="margin-top:14px">
       <button class="btn primary" id="rgerar">Gerar relatório</button>
       <button class="btn" id="rprint">⎙ Imprimir / PDF</button>
       <button class="btn" id="rcsv">⇩ Exportar CSV</button>
@@ -2924,13 +2939,14 @@ ROUTES.relatorios=(v)=>{
     v.querySelector("#rfiltros").innerHTML=filtroHTML();
     const cliSel=v.querySelector("#fcli");
     if(cliSel&&REL_DEFS[st.tipo].filtros.includes("manutencao"))cliSel.onchange=()=>{st.cliente=cliSel.value;st.manut="";drawFiltros();};
-    const paraCliente=REL_DEFS[st.tipo].publico==="cliente";
-    v.querySelector("#rbadge").innerHTML=paraCliente
-      ?`<span class="pill good">Pode enviar ao cliente</span> — sem custos internos, com espaço para assinatura.`
-      :`<span class="pill">Uso interno</span> — inclui custos e dados de gestão; não enviar ao cliente.`;
   };
   drawFiltros();
-  v.querySelector("#rtipo").onchange=e=>{readFilters();st.tipo=e.target.value;drawFiltros();v.querySelector("#repout").innerHTML="";ultimo=null;};
+  v.querySelectorAll("[data-rt]").forEach(b=>b.onclick=()=>{
+    if(b.dataset.rt===st.tipo)return;
+    readFilters();st.tipo=b.dataset.rt;
+    v.querySelectorAll("[data-rt]").forEach(x=>x.classList.toggle("sel",x.dataset.rt===st.tipo));
+    drawFiltros();v.querySelector("#repout").innerHTML="";ultimo=null;
+  });
   v.querySelector("#rgerar").onclick=gerar;
   v.querySelector("#rprint").onclick=()=>{if(!ultimo)gerar();setTimeout(()=>window.print(),80);};
   v.querySelector("#rcsv").onclick=async()=>{
