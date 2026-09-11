@@ -2668,8 +2668,9 @@ const REL_DEFS={
   jornadas:{nome:"Jornadas, KM e tempo",filtros:["periodo","tecnico","veiculo"]},
   despesas:{nome:"Gastos & despesas",filtros:["periodo","veiculo"]},
   preventivas:{nome:"Preventivas de veículos",filtros:["veiculo"]},
-  prontuario:{nome:"Prontuário do equipamento (laudo)",filtros:["equipamento","periodo"]},
-  cliente:{nome:"Histórico do cliente",filtros:["cliente","periodo"]}
+  atendimento:{nome:"Relatório de atendimento (uma visita)",filtros:["cliente","manutencao"],publico:"cliente"},
+  prontuario:{nome:"Prontuário do equipamento (laudo)",filtros:["equipamento","periodo"],publico:"cliente"},
+  cliente:{nome:"Histórico do cliente",filtros:["cliente","periodo"],publico:"cliente"}
 };
 ROUTES.relatorios=(v)=>{
   const hoje=new Date();
@@ -2677,7 +2678,7 @@ ROUTES.relatorios=(v)=>{
     tipo:"manutencoes",
     de:new Date(hoje.getFullYear(),0,1).toISOString().slice(0,10),
     ate:hoje.toISOString().slice(0,10),
-    cliente:"",tecnico:"",tipoAtend:"",fin:"",statusOS:"",veiculo:"",equip:""
+    cliente:"",tecnico:"",tipoAtend:"",fin:"",statusOS:"",veiculo:"",equip:"",manut:""
   };
   let ultimo=null;
 
@@ -2756,6 +2757,36 @@ ROUTES.relatorios=(v)=>{
         colunas:["Veículo","Serviço","Regra","Última execução","Restante","Status"],
         linhas,totais:[{l:"Itens",n:r.length},{l:"Vencidas",n:r.filter(p=>preventivaStatus(p).venc).length},{l:"Próximas",n:r.filter(p=>{const s=preventivaStatus(p);return!s.venc&&s.prox;}).length}]};
     },
+    atendimento(){
+      const m=byId("manutencoes",st.manut);
+      if(!m)return{erro:"Selecione o atendimento (visita) para gerar o relatório."};
+      const eq=byId("equipamentos",m.equipamentoId);
+      const testes=Object.entries(m.testes||{}).filter(([,x])=>x).map(([k,x])=>(DB.camposTecnicos.find(c=>c.id===k)?.nome||k)+": "+x)
+        .concat((m.testesExtra||[]).filter(t=>t.valor).map(t=>t.nome+": "+t.valor));
+      const med=Object.entries(m.medicoes||{}).filter(([,x])=>x).map(([k,x])=>k+": "+x);
+      const pc=(m.pecas||[]).map(p=>(byId("produtos",p.produtoId)?.descricao||"Peça")+" (x"+p.qtd+")");
+      const linhas=[
+        ["Cliente",cliNome(m.clienteId)],
+        [eqLabel(),eqNome(m.equipamentoId)+(eq?.fabricante?" · "+eq.fabricante:"")],
+        [CFG().setorLabel||"Setor atendido",eq?.setor||"—"],
+        ["Data do atendimento",fmtDate(m.criadaEm)],
+        ["Técnico responsável",tecNome(m.tecnicoId)+(m.equipe&&m.equipe.length?" + "+tecNomes(m.equipe):"")],
+        ["Tipo de atendimento",TIPOS_ATEND[m.tipoAtendimento]||"—"],
+        ["Problema relatado",m.problema||"—"],
+        ["Diagnóstico",m.diagnostico||"—"],
+        ["Serviço realizado",m.servico||"—"],
+        ["Testes realizados",testes.join("; ")||"—"],
+        ["Medições",med.join("; ")||"—"],
+        ["Peças/materiais utilizados",pc.join("; ")||"—"],
+        ["Observações",m.obs||"—"],
+        ["Situação",m.finalizacao||"Em aberto"],
+        ["Próxima ação",m.proximaAcao&&m.proximaAcao!=="nenhuma"?(PROX_ACOES[m.proximaAcao]||m.proximaAcao)+(m.proximaData?" — "+fmtDate(m.proximaData):""):"—"]
+      ];
+      return{titulo:"Relatório de atendimento",
+        subtitulo:"OS "+(m.numeroBlingRef||"—")+" · "+cliNome(m.clienteId)+" · "+eqNome(m.equipamentoId),
+        colunas:["Item","Detalhe"],linhas,assinar:true,
+        totais:[{l:"OS",n:m.numeroBlingRef||"—"},{l:"Data",n:fmtDate(m.criadaEm)},{l:"Situação",n:m.finalizacao||"Em aberto"}]};
+    },
     prontuario(){
       const e=byId("equipamentos",st.equip);
       if(!e)return{erro:"Selecione um equipamento para gerar o laudo."};
@@ -2810,6 +2841,12 @@ ROUTES.relatorios=(v)=>{
     if(f.includes("statusOS"))parts.push(selField("fsos","Status da OS",[["","Todos"],["aberta","Aberta"],["em_atendimento","Em atendimento"],["aguardando_peca","Aguardando peça"],["aguardando_retorno","Aguardando retorno"],["encerrada","Encerrada"]],st.statusOS));
     if(f.includes("veiculo"))parts.push(selField("fvei","Veículo",[["","Todos"],...DB.veiculos.filter(ativo).map(x=>[x.id,x.placa+" · "+x.marcaModelo])],st.veiculo));
     if(f.includes("equipamento"))parts.push(selField("feq","Equipamento / NS",[["","Selecione…"],...DB.equipamentos.filter(ativo).map(e=>[e.id,e.ns+" · "+e.modelo])],st.equip));
+    if(f.includes("manutencao")){
+      let ms=DB.manutencoes.filter(ativo);
+      if(st.cliente)ms=ms.filter(m=>m.clienteId===st.cliente);
+      ms=ms.sort((a,b)=>new Date(b.criadaEm)-new Date(a.criadaEm));
+      parts.push(selField("fmnt","Atendimento / visita",[["","Selecione…"],...ms.map(m=>[m.id,fmtDate(m.criadaEm)+" · "+(m.numeroBlingRef||"s/ OS")+" · "+cliNome(m.clienteId)+" · "+eqNome(m.equipamentoId)])],st.manut));
+    }
     return parts.join("");
   }
   function readFilters(){
@@ -2823,6 +2860,7 @@ ROUTES.relatorios=(v)=>{
     if(g("fsos"))st.statusOS=g("fsos").value;
     if(g("fvei"))st.veiculo=g("fvei").value;
     if(g("feq"))st.equip=g("feq").value;
+    if(g("fmnt"))st.manut=g("fmnt").value;
   }
   function empresaCab(){
     const c=CFG();
@@ -2849,7 +2887,7 @@ ROUTES.relatorios=(v)=>{
       <div class="tblwrap"><table class="tbl"><thead><tr>${r.colunas.map(c=>`<th>${esc(c)}</th>`).join("")}</tr></thead>
       <tbody>${r.linhas.length?r.linhas.map(ln=>`<tr>${ln.map(c=>`<td>${esc(c)}</td>`).join("")}</tr>`).join(""):`<tr><td colspan="${r.colunas.length}" class="muted">Nenhum registro para o filtro selecionado.</td></tr>`}</tbody></table></div>
       ${r.assinar?`<div class="repsign"><div>Técnico responsável</div><div>Responsável pelo cliente</div></div>`:""}
-      <div class="repfoot"><span>${r.linhas.length} registro(s)</span><span>Documento gerado automaticamente pelo Banheza Assist</span></div>
+      <div class="repfoot"><span>${r.linhas.length} registro(s)</span><span>${REL_DEFS[st.tipo].publico==="cliente"?"Documento para entrega ao cliente":"Uso interno"} · gerado pelo Banheza Assist</span></div>
     </div>`;
   }
   function gerar(){
@@ -2866,10 +2904,14 @@ ROUTES.relatorios=(v)=>{
   <div class="card pad noprint" style="margin-bottom:18px">
     <div class="formgrid">
       <label class="f">Relatório
-        <select id="rtipo">${Object.entries(REL_DEFS).map(([k,d])=>`<option value="${k}"${k===st.tipo?" selected":""}>${d.nome}</option>`).join("")}</select></label>
+        <select id="rtipo">
+          <optgroup label="Uso interno — gestão da empresa">${Object.entries(REL_DEFS).filter(([,d])=>!d.publico).map(([k,d])=>`<option value="${k}"${k===st.tipo?" selected":""}>${d.nome}</option>`).join("")}</optgroup>
+          <optgroup label="Pode enviar ao cliente">${Object.entries(REL_DEFS).filter(([,d])=>d.publico==="cliente").map(([k,d])=>`<option value="${k}"${k===st.tipo?" selected":""}>${d.nome}</option>`).join("")}</optgroup>
+        </select></label>
       <div id="rfiltros" style="display:contents"></div>
     </div>
-    <div class="actionbar" style="margin-top:14px">
+    <p class="small" id="rbadge" style="margin-top:10px"></p>
+    <div class="actionbar" style="margin-top:6px">
       <button class="btn primary" id="rgerar">Gerar relatório</button>
       <button class="btn" id="rprint">⎙ Imprimir / PDF</button>
       <button class="btn" id="rcsv">⇩ Exportar CSV</button>
@@ -2878,7 +2920,15 @@ ROUTES.relatorios=(v)=>{
   </div>
   <div id="repout"></div>`;
 
-  const drawFiltros=()=>{v.querySelector("#rfiltros").innerHTML=filtroHTML();};
+  const drawFiltros=()=>{
+    v.querySelector("#rfiltros").innerHTML=filtroHTML();
+    const cliSel=v.querySelector("#fcli");
+    if(cliSel&&REL_DEFS[st.tipo].filtros.includes("manutencao"))cliSel.onchange=()=>{st.cliente=cliSel.value;st.manut="";drawFiltros();};
+    const paraCliente=REL_DEFS[st.tipo].publico==="cliente";
+    v.querySelector("#rbadge").innerHTML=paraCliente
+      ?`<span class="pill good">Pode enviar ao cliente</span> — sem custos internos, com espaço para assinatura.`
+      :`<span class="pill">Uso interno</span> — inclui custos e dados de gestão; não enviar ao cliente.`;
+  };
   drawFiltros();
   v.querySelector("#rtipo").onchange=e=>{readFilters();st.tipo=e.target.value;drawFiltros();v.querySelector("#repout").innerHTML="";ultimo=null;};
   v.querySelector("#rgerar").onclick=gerar;
