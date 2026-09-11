@@ -302,6 +302,7 @@ input[type=checkbox]{min-height:0}
 .repdoc{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:26px 28px;max-width:920px}
 .rephead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:16px}
 .rephead .org{font-family:var(--display);font-weight:700;font-size:16px}
+.rephead .orgdados{font-size:10.5px;color:var(--ink-3);line-height:1.6;margin-top:3px;max-width:420px}
 .rephead .meta{font-size:11px;color:var(--ink-3);text-align:right;line-height:1.6}
 .repttl{font-family:var(--display);font-size:19px;font-weight:700;margin-bottom:2px}
 .repsub{font-size:12px;color:var(--ink-2);margin-bottom:16px}
@@ -349,7 +350,7 @@ input[type=checkbox]{min-height:0}
   .wrap{padding:0!important}
   .wrap{padding:0;max-width:none}
   .repdoc{border:0;box-shadow:none;border-radius:0;padding:0;max-width:none}
-  .repdoc,.rephead,.reptot,.tbl th,.tbl td{color:#000!important}
+  .repdoc,.rephead,.rephead .orgdados,.reptot,.tbl th,.tbl td{color:#000!important}
   .tbl th{border-bottom:1px solid #000}
   .tbl td{border-bottom:1px solid #bbb}
   .reptot{border-color:#999}
@@ -2823,10 +2824,23 @@ ROUTES.relatorios=(v)=>{
     if(g("fvei"))st.veiculo=g("fvei").value;
     if(g("feq"))st.equip=g("feq").value;
   }
+  function empresaCab(){
+    const c=CFG();
+    const nome=(c.empresa&&c.empresa!=="Minha Empresa")?c.empresa:"Banheza Assist";
+    const l=[];
+    if(c.razaoSocial&&c.razaoSocial!==nome)l.push(esc(c.razaoSocial));
+    const doc=[c.cnpj?"CNPJ "+esc(c.cnpj):"",c.ie?"IE "+esc(c.ie):""].filter(Boolean).join(" · ");
+    if(doc)l.push(doc);
+    if(c.enderecoEmpresa)l.push(esc(c.enderecoEmpresa));
+    const ct=[c.telefoneEmpresa?esc(c.telefoneEmpresa):"",c.emailEmpresa?esc(c.emailEmpresa):""].filter(Boolean).join(" · ");
+    if(ct)l.push(ct);
+    if(!l.length)l.push("Assistência técnica &amp; manutenção de campo");
+    return `<div class="org">${esc(nome)}</div><div class="orgdados">${l.join("<br>")}</div>`;
+  }
   function docHTML(r){
     return `<div class="repdoc">
       <div class="rephead">
-        <div><div class="org">${esc((CFG().empresa&&CFG().empresa!=="Minha Empresa")?CFG().empresa:"Banheza Assist")}</div><div class="small muted">Assistência técnica &amp; manutenção de campo</div></div>
+        <div>${empresaCab()}</div>
         <div class="meta">Emitido em ${fmtDT(nowISO())}<br>Perfil: ${esc(perfilNome())}${usaPeriodo()?"<br>Período: "+fmtDate(st.de)+" a "+fmtDate(st.ate):""}</div>
       </div>
       <div class="repttl">${esc(r.titulo)}</div>
@@ -3002,12 +3016,19 @@ ROUTES.config=(v)=>{
       ${adm?`<label class="btn sm" style="cursor:pointer">Trocar logo<input type="file" id="cLogo" accept="image/*" hidden></label>${c.logo?`<button class="btn sm danger" id="cLogoRm">Remover</button>`:""}`:""}
     </div>
     <div class="formgrid">
-      <label class="f full">Nome da empresa<input id="cEmpresa" value="${esc(c.empresa||"")}" ${adm?"":"disabled"}></label>
-      <label class="f">Como você chama o equipamento (singular)<input id="cEqL" value="${esc(c.equipLabel||"Equipamento")}" ${adm?"":"disabled"} placeholder="Gerador, Bomba, Elevador…"></label>
+      <label class="f full">Nome da empresa (como aparece para a equipe)<input id="cEmpresa" value="${esc(c.empresa||"")}" ${adm?"":"disabled"}></label>
+      <label class="f full">Razão social<input id="cRazao" value="${esc(c.razaoSocial||"")}" ${adm?"":"disabled"} placeholder="Nome jurídico completo"></label>
+      <label class="f">CNPJ<input id="cCnpj" value="${esc(c.cnpj||"")}" ${adm?"":"disabled"} placeholder="00.000.000/0000-00"></label>
+      <label class="f">Inscrição estadual<input id="cIe" value="${esc(c.ie||"")}" ${adm?"":"disabled"} placeholder="IE ou ISENTO"></label>
+      <label class="f full">Endereço completo<input id="cEnd" value="${esc(c.enderecoEmpresa||"")}" ${adm?"":"disabled"} placeholder="Rua, nº, bairro, cidade/UF, CEP"></label>
+      <label class="f">Telefone<input id="cTel" value="${esc(c.telefoneEmpresa||"")}" ${adm?"":"disabled"} placeholder="(00) 00000-0000"></label>
+      <label class="f">E-mail<input id="cEmail" value="${esc(c.emailEmpresa||"")}" ${adm?"":"disabled"} placeholder="contato@empresa.com.br"></label>
+      <label class="f full">Como você chama o equipamento (singular)<input id="cEqL" value="${esc(c.equipLabel||"Equipamento")}" ${adm?"":"disabled"} placeholder="Gerador, Bomba, Elevador…"></label>
       <label class="f">No plural<input id="cEqLP" value="${esc(c.equipLabelPlural||"Equipamentos")}" ${adm?"":"disabled"}></label>
       <label class="f full">Rótulo do "setor/local atendido"<input id="cSetor" value="${esc(c.setorLabel||"Setor atendido")}" ${adm?"":"disabled"} placeholder="Piscina, Andar, Linha de produção…"></label>
       <label class="f full">Nome do sistema externo de OS<input id="cOsExt" value="${esc(c.osExterna||"")}" ${adm?"":"disabled"} placeholder="Bling, Omie, ERP próprio… (opcional)"></label>
     </div>
+    <p class="small muted" style="margin-top:8px">Razão social, CNPJ, IE e endereço aparecem no cabeçalho dos relatórios.</p>
     ${adm?`<button class="btn primary" id="cSalvar" style="margin-top:12px">Salvar identidade</button>`:`<p class="small muted" style="margin-top:8px">Só o administrador altera a identidade.</p>`}
   </div>
 
@@ -3051,6 +3072,12 @@ ROUTES.config=(v)=>{
   v.querySelector("#cSalvar")&&(v.querySelector("#cSalvar").onclick=()=>{
     const cc=CFG();
     cc.empresa=v.querySelector("#cEmpresa").value.trim()||"Minha Empresa";
+    cc.razaoSocial=v.querySelector("#cRazao").value.trim();
+    cc.cnpj=v.querySelector("#cCnpj").value.trim();
+    cc.ie=v.querySelector("#cIe").value.trim();
+    cc.enderecoEmpresa=v.querySelector("#cEnd").value.trim();
+    cc.telefoneEmpresa=v.querySelector("#cTel").value.trim();
+    cc.emailEmpresa=v.querySelector("#cEmail").value.trim();
     cc.equipLabel=v.querySelector("#cEqL").value.trim()||"Equipamento";
     cc.equipLabelPlural=v.querySelector("#cEqLP").value.trim()||"Equipamentos";
     cc.setorLabel=v.querySelector("#cSetor").value.trim()||"Setor atendido";
