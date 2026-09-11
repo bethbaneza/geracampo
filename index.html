@@ -584,6 +584,23 @@ function loadPdfLib(){
   });
   return pdfLibP;
 }
+/* ---------- mapa da frota (Leaflet + OpenStreetMap, sob demanda) ---------- */
+let leafletLibP=null;
+function loadLeaflet(){
+  if(window.L)return Promise.resolve(true);
+  if(leafletLibP)return leafletLibP;
+  leafletLibP=new Promise(res=>{
+    const css=document.createElement("link");
+    css.rel="stylesheet";css.href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+    document.head.appendChild(css);
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+    s.onload=()=>res(!!window.L);
+    s.onerror=()=>res(false);
+    document.head.appendChild(s);
+  });
+  return leafletLibP;
+}
 async function extrairTextoPDF(file){
   const buf=await file.arrayBuffer();
   const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
@@ -972,6 +989,26 @@ function tipoAtendPill(t){const c=t==="locacao"?"accent":t==="garantia"?"info":t
 function osStatusPill(s){const m={aberta:["warn","Aberta"],em_atendimento:["info","Em atendimento"],aguardando_peca:["crit","Aguardando peça"],aguardando_retorno:["warn","Aguardando retorno"],encerrada:["good","Encerrada"]};const x=m[s]||["","—"];return `<span class="pill ${x[0]}"><span class="dot"></span>${x[1]}</span>`;}
 function jornadaAberta(){return DB.jornadas.find(j=>j.status==="aberta"&&j.tecnicoId===VIEWER.userId&&ativo(j));}
 
+/* ---------- frota ao vivo: posição do veículo enquanto a jornada está aberta ---------- */
+let GPS_TIMER=null,FROTA_MAP=null,FROTA_MARKERS={};
+function gpsTick(){
+  if(MODO_DEMO||!navigator.geolocation)return;
+  const j=jornadaAberta();
+  if(!j||!j.veiculoId)return;
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const v=byId("veiculos",j.veiculoId);if(!v)return;
+    v.posLat=pos.coords.latitude;v.posLng=pos.coords.longitude;
+    v.posPrecisao=Math.round(pos.coords.accuracy||0);
+    v.posEm=nowISO();v.posTecnicoId=j.tecnicoId;v.posJornadaId=j.id;
+    persist();
+  },()=>{/* sem permissão / sem sinal: ignora silenciosamente */},{enableHighAccuracy:true,maximumAge:20000,timeout:15000});
+}
+function startGps(){
+  if(GPS_TIMER||MODO_DEMO||!navigator.geolocation)return;
+  gpsTick();
+  GPS_TIMER=setInterval(gpsTick,45000);
+}
+
 function preventivaStatus(pv){
   const v=byId("veiculos",pv.veiculoId);if(!v)return{label:"—",cls:""};
   const kmRest=pv.regraKm?(pv.ultKm+pv.regraKm)-v.kmAtual:Infinity;
@@ -1002,6 +1039,7 @@ const NAV=()=>[
   {g:"Operação"},
   {r:"painel",t:"Painel",i:"grid"},
   {r:"jornada",t:"Jornada",i:"route"},
+  {r:"frota",t:"Frota ao vivo",i:"pin"},
   {r:"os",t:"Ordens de Serviço",i:"clipboard"},
   {r:"manutencoes",t:"Manutenções",i:"wrench"},
   {g:"Cadastros"},
@@ -1035,6 +1073,7 @@ const ICONS={
   menu:'<circle cx="5" cy="6" r="1.6"/><circle cx="5" cy="12" r="1.6"/><circle cx="5" cy="18" r="1.6"/><path d="M11 6h10M11 12h10M11 18h10"/>',
   wallet:'<path d="M4 7a2 2 0 0 1 2-2h12v4M4 7v10a2 2 0 0 0 2 2h13v-4M4 7h14M17 13h4v3h-4a1.5 1.5 0 0 1 0-3Z"/>',
   lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  pin:'<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
   spark:'<path d="M12 2 9.2 8.6 2 9.3l5.5 4.9L5.8 22 12 18.2 18.2 22l-1.7-7.8L22 9.3l-7.2-.7z"/>'
 };
 /* tab bar do celular: 4 ações principais + Mais */
@@ -1048,6 +1087,7 @@ const TABS=[
 const TABROUTES=TABS.map(t=>t.r);
 /* itens da tela "Mais" */
 const MAIS=()=>[
+  {r:"frota",t:"Frota ao vivo",i:"pin",d:"Posição dos veículos em campo"},
   {r:"clientes",t:"Clientes",i:"users",d:"Cadastro e histórico"},
   {r:"equipamentos",t:navEquip(),i:"cpu",d:"Prontuário por número de série"},
   {r:"veiculos",t:"Veículos",i:"truck",d:"Frota e preventivas"},
@@ -1194,7 +1234,7 @@ async function entrar(session){
   SYNC.mode="conectando";updateSync();
   await carregarTudo();
   esconderLogin();dispensarSplash();renderNav();renderRole();
-  assinarRealtime();
+  assinarRealtime();startGps();
   SYNC.mode="ok";SYNC.ts=Date.now();updateSync();
   if(precisaOnboarding()){ router(); abrirOnboarding(); return; }
   if(RETORNO_PAGAMENTO&&planoEfetivo()!=="pro"){location.hash="#/assinar";}
@@ -2614,6 +2654,63 @@ ROUTES.despesas=(v)=>{
   draw();
 };
 ROUTES.abastecimento=(v)=>ROUTES.despesas(v);
+
+/* ============ FROTA AO VIVO ============ */
+ROUTES.frota=(v)=>{
+  const agora=Date.now();
+  const vs=DB.veiculos.filter(ativo).map(x=>{
+    const min=x.posEm?Math.round((agora-new Date(x.posEm).getTime())/60000):null;
+    let st="offline",lab="Sem posição";
+    if(min!=null&&min<=5){st="on";lab="Em rota";}
+    else if(min!=null&&min<=30){st="warn";lab="Parado há "+min+" min";}
+    else if(min!=null){st="offline";lab="Sem sinal há "+(min<60?min+" min":Math.round(min/60)+"h");}
+    return{...x,_min:min,_st:st,_lab:lab};
+  }).sort((a,b)=>(a._min??1e9)-(b._min??1e9));
+  const comPos=vs.filter(x=>x.posLat!=null&&x.posLng!=null);
+  const pillcls={on:"good",warn:"warn",offline:""};
+
+  v.innerHTML=`<div class="pagehead"><h1>Frota ao vivo</h1><p>Posição enviada pelo celular do técnico enquanto a jornada está aberta e a localização é permitida. Atualiza a cada ~45s.</p></div>
+  <div class="card pad" style="margin-bottom:16px">
+    <div id="frotaMapEl" style="height:380px;border-radius:var(--radius-sm);overflow:hidden;background:var(--surface-2)"></div>
+    ${!comPos.length?'<p class="small muted" style="margin-top:10px">Nenhum veículo com posição recente. Assim que um técnico abrir a jornada e permitir a localização no celular, ele aparece aqui.</p>':""}
+  </div>
+  <div class="panel"><div class="ph"><h3>Veículos</h3><span class="pill good">${comPos.length} em sinal</span></div>
+    <div class="list">${vs.map(x=>`
+      <div class="item">
+        <span class="avatar">${esc((x.placa||"--").slice(0,2))}</span>
+        <div><div class="t">${esc(x.placa)} <span class="pill ${pillcls[x._st]}">${esc(x._lab)}</span></div>
+          <div class="d">${esc(x.marcaModelo||"—")}${x.posTecnicoId?" · "+esc(tecNome(x.posTecnicoId)):""}</div></div>
+        <span class="sp"></span>
+        ${x.posLat!=null?`<button class="btn sm" data-centrar="${x.id}">Ver no mapa</button>`:""}
+      </div>`).join("")||'<div class="emptyst small">Nenhum veículo cadastrado.</div>'}</div>
+  </div>`;
+
+  loadLeaflet().then(ok=>{
+    const el=v.querySelector("#frotaMapEl");
+    if(!el)return;
+    if(!ok){el.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--ink-3);font-size:13px;text-align:center;padding:20px">Não foi possível carregar o mapa (sem conexão?).</div>';return;}
+    if(!comPos.length){el.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--ink-3);font-size:13px">Sem posições no momento</div>';return;}
+    const prevCenter=FROTA_MAP?FROTA_MAP.getCenter():null,prevZoom=FROTA_MAP?FROTA_MAP.getZoom():null;
+    if(FROTA_MAP){try{FROTA_MAP.remove();}catch(e){}}
+    FROTA_MARKERS={};
+    FROTA_MAP=L.map(el);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(FROTA_MAP);
+    const cores={on:"#00c868",warn:"#e0a24a",offline:"#8a97a8"};
+    const marks=[];
+    comPos.forEach(x=>{
+      const m=L.circleMarker([x.posLat,x.posLng],{radius:9,color:"#fff",weight:2,fillColor:cores[x._st],fillOpacity:1}).addTo(FROTA_MAP);
+      m.bindPopup(`<b>${esc(x.placa)}</b><br>${esc(x._lab)}${x.posTecnicoId?"<br>"+esc(tecNome(x.posTecnicoId)):""}`);
+      marks.push(m);FROTA_MARKERS[x.id]=m;
+    });
+    if(prevCenter&&prevZoom!=null)FROTA_MAP.setView(prevCenter,prevZoom);
+    else FROTA_MAP.fitBounds(L.featureGroup(marks).getBounds().pad(0.3),{maxZoom:15});
+  });
+
+  v.querySelectorAll("[data-centrar]").forEach(b=>b.onclick=()=>{
+    const x=byId("veiculos",b.dataset.centrar);
+    if(FROTA_MAP&&x&&x.posLat!=null){FROTA_MAP.setView([x.posLat,x.posLng],16);FROTA_MARKERS[x.id]&&FROTA_MARKERS[x.id].openPopup();}
+  });
+};
 
 /* ============ INDICADORES ============ */
 ROUTES.indicadores=(v)=>{
