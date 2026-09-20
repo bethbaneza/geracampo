@@ -3278,7 +3278,11 @@ ROUTES.config=(v)=>{
     const b=v.querySelector("#blingSync");b.disabled=true;b.textContent="Sincronizando…";
     try{
       const{data,error}=await supa.functions.invoke("bling-sync");
-      if(error)throw error;
+      if(error){
+        let detalhe=error.message||String(error);
+        try{if(error.context&&error.context.text)detalhe=(await error.context.text())||detalhe;}catch(e2){}
+        throw new Error(detalhe);
+      }
       if(data&&data.ok)toast(`Sincronizado: ${data.os} OS, ${data.clientes} clientes, ${data.produtos} produtos.`);
       else toast(data&&data.msg?data.msg:"Não foi possível sincronizar.");
       await carregarTudo();router();
