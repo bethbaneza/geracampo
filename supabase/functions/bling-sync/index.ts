@@ -85,84 +85,82 @@ function mapSituacaoOS(valor: number | undefined): string {
   }
 }
 
-async function syncOrdens(empresaId: string, headers: Record<string, string>) {
-  const itens = await blingList("/ordens/servico", headers, {});
+// Grava tudo de uma vez (upsert em lote) em vez de uma chamada por item —
+// com muitos registros, uma chamada por item estourava o tempo máximo de
+// execução da Edge Function ("shutdown / WallClockTime").
+async function upsertLote(tabela: string, rows: any[]): Promise<number> {
+  if (!rows.length) return 0;
   let n = 0;
-  for (const os of itens) {
-    const row = {
-      id: `bling-os-${os.id}`,
-      empresa_id: empresaId,
-      dados: {
-        numeroBling: String(os.numero ?? os.id),
-        criadaEm: os.data ? `${os.data}T00:00:00.000Z` : new Date().toISOString(),
-        clienteId: os.contato?.id ? `bling-cli-${os.contato.id}` : null,
-        descricao: os.observacoesInternas || `OS ${os.numero ?? os.id}`,
-        status: mapSituacaoOS(os.situacao?.valor),
-        equipamentoId: null,
-        tipoAtendimento: null,
-        situacaoCobranca: typeof os.total === "number" ? `R$ ${os.total.toFixed(2)}` : "Não se aplica",
-        origem: "bling",
-      },
-      atualizado_em: new Date().toISOString(),
-    };
-    const { error } = await admin.from("ordens").upsert(row);
-    if (error) console.error("upsert ordem", os.id, error); else n++;
+  for (let i = 0; i < rows.length; i += 500) {
+    const pedaco = rows.slice(i, i + 500);
+    const { error } = await admin.from(tabela).upsert(pedaco);
+    if (error) console.error(`upsert lote ${tabela}`, error); else n += pedaco.length;
   }
   return n;
+}
+
+async function syncOrdens(empresaId: string, headers: Record<string, string>) {
+  const itens = await blingList("/ordens/servico", headers, {});
+  const rows = itens.map((os: any) => ({
+    id: `bling-os-${os.id}`,
+    empresa_id: empresaId,
+    dados: {
+      numeroBling: String(os.numero ?? os.id),
+      criadaEm: os.data ? `${os.data}T00:00:00.000Z` : new Date().toISOString(),
+      clienteId: os.contato?.id ? `bling-cli-${os.contato.id}` : null,
+      descricao: os.observacoesInternas || `OS ${os.numero ?? os.id}`,
+      status: mapSituacaoOS(os.situacao?.valor),
+      equipamentoId: null,
+      tipoAtendimento: null,
+      situacaoCobranca: typeof os.total === "number" ? `R$ ${os.total.toFixed(2)}` : "Não se aplica",
+      origem: "bling",
+    },
+    atualizado_em: new Date().toISOString(),
+  }));
+  return upsertLote("ordens", rows);
 }
 
 async function syncContatos(empresaId: string, headers: Record<string, string>) {
   const itens = await blingList("/contatos", headers, { criterio: "1" });
-  let n = 0;
-  for (const c of itens) {
-    if (c.situacao === "E") continue; // excluído no Bling — não traz
-    const row = {
-      id: `bling-cli-${c.id}`,
-      empresa_id: empresaId,
-      dados: {
-        razao: c.nome || "(sem nome)",
-        fantasia: c.nome || "(sem nome)",
-        doc: c.numeroDocumento || "",
-        tel: c.telefone || c.celular || "",
-        email: "",
-        endereco: "",
-        cidade: "",
-        contatos: "",
-        blingId: c.codigo || String(c.id),
-        relacao: "assistencia",
-        origem: "bling",
-      },
-      atualizado_em: new Date().toISOString(),
-    };
-    const { error } = await admin.from("clientes").upsert(row);
-    if (error) console.error("upsert cliente", c.id, error); else n++;
-  }
-  return n;
+  const rows = itens.filter((c: any) => c.situacao !== "E").map((c: any) => ({
+    id: `bling-cli-${c.id}`,
+    empresa_id: empresaId,
+    dados: {
+      razao: c.nome || "(sem nome)",
+      fantasia: c.nome || "(sem nome)",
+      doc: c.numeroDocumento || "",
+      tel: c.telefone || c.celular || "",
+      email: "",
+      endereco: "",
+      cidade: "",
+      contatos: "",
+      blingId: c.codigo || String(c.id),
+      relacao: "assistencia",
+      origem: "bling",
+    },
+    atualizado_em: new Date().toISOString(),
+  }));
+  return upsertLote("clientes", rows);
 }
 
 async function syncProdutos(empresaId: string, headers: Record<string, string>) {
   const itens = await blingList("/produtos", headers, { criterio: "2", tipo: "P" });
-  let n = 0;
-  for (const p of itens) {
-    const row = {
-      id: `bling-prod-${p.id}`,
-      empresa_id: empresaId,
-      dados: {
-        descricao: p.nome || "(sem nome)",
-        codigo: p.codigo || "",
-        referencia: p.codigo || "",
-        barras: "",
-        estoque: Math.round(p.estoque?.saldoVirtualTotal ?? 0),
-        minimo: 0,
-        custo: Number(p.precoCusto ?? p.preco ?? 0),
-        fonte: "Bling",
-      },
-      atualizado_em: new Date().toISOString(),
-    };
-    const { error } = await admin.from("produtos").upsert(row);
-    if (error) console.error("upsert produto", p.id, error); else n++;
-  }
-  return n;
+  const rows = itens.map((p: any) => ({
+    id: `bling-prod-${p.id}`,
+    empresa_id: empresaId,
+    dados: {
+      descricao: p.nome || "(sem nome)",
+      codigo: p.codigo || "",
+      referencia: p.codigo || "",
+      barras: "",
+      estoque: Math.round(p.estoque?.saldoVirtualTotal ?? 0),
+      minimo: 0,
+      custo: Number(p.precoCusto ?? p.preco ?? 0),
+      fonte: "Bling",
+    },
+    atualizado_em: new Date().toISOString(),
+  }));
+  return upsertLote("produtos", rows);
 }
 
 Deno.serve(async (req: Request) => {
@@ -201,9 +199,12 @@ Deno.serve(async (req: Request) => {
     }
 
     const headers = { Authorization: `Bearer ${accessToken}`, Accept: "application/json" };
-    const os = await syncOrdens(empresaId, headers);
-    const clientes = await syncContatos(empresaId, headers);
-    const produtos = await syncProdutos(empresaId, headers);
+    // os 3 recursos em paralelo — sequencial estourava o tempo máximo de execução
+    const [os, clientes, produtos] = await Promise.all([
+      syncOrdens(empresaId, headers),
+      syncContatos(empresaId, headers),
+      syncProdutos(empresaId, headers),
+    ]);
 
     await admin.from("empresas").update({ bling_ultima_sync: new Date().toISOString(), bling_ultimo_erro: null }).eq("id", empresaId);
     return ok({ ok: true, os, clientes, produtos });
