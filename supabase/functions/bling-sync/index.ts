@@ -22,8 +22,19 @@ const admin = createClient(
 );
 
 const API = "https://api.bling.com.br/Api/v3";
+
+// CORS: o navegador chama essa função via fetch (supabase.functions.invoke),
+// então precisa liberar explicitamente — sem isso o navegador bloqueia a
+// resposta antes mesmo de chegar no app ("Failed to send a request...").
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 const ok = (body: unknown) =>
-  new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+  new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json", ...CORS } });
+const fail = (msg: string, status = 401) =>
+  new Response(msg, { status, headers: CORS });
 
 async function marcarErro(empresaId: string, msg: string) {
   await admin.from("empresas").update({ bling_ultimo_erro: msg }).eq("id", empresaId);
@@ -155,14 +166,15 @@ async function syncProdutos(empresaId: string, headers: Record<string, string>) 
 }
 
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   try {
     if (!CLIENT_ID || !CLIENT_SECRET) return ok({ ok: false, msg: "app do Bling não configurado (secrets ausentes)" });
 
     const authHeader = req.headers.get("Authorization") || "";
     const jwt = authHeader.replace(/^Bearer\s+/i, "");
-    if (!jwt) return new Response("sem sessão", { status: 401 });
+    if (!jwt) return fail("sem sessão");
     const { data: userData, error: userErr } = await admin.auth.getUser(jwt);
-    if (userErr || !userData?.user) return new Response("sessão inválida", { status: 401 });
+    if (userErr || !userData?.user) return fail("sessão inválida");
 
     const { data: perfil } = await admin.from("perfis").select("empresa_id,papel,ativo").eq("id", userData.user.id).maybeSingle();
     if (!perfil || !perfil.ativo || !perfil.empresa_id) return ok({ ok: false, msg: "perfil inválido" });
@@ -197,6 +209,6 @@ Deno.serve(async (req: Request) => {
     return ok({ ok: true, os, clientes, produtos });
   } catch (e) {
     console.error("bling-sync falhou:", e);
-    return new Response("erro: " + (e as Error).message, { status: 500 });
+    return new Response("erro: " + (e as Error).message, { status: 500, headers: CORS });
   }
 });
