@@ -440,6 +440,9 @@ const PRECO_PRO="59,90";                       // valor mensal atual
 const NOTA_PRECO="Preço de fundador — congelado para os 20 primeiros clientes.";
 const LINK_ASSINATURA="https://mpago.la/1RzNXsq";   // assinatura recorrente do Mercado Pago
 const CONTATO_BANHEZA="[seu-email@banheza.com.br]";
+/* ----- integração Bling (Client ID é público; o Secret fica só no Supabase) ----- */
+const BLING_CLIENT_ID="[SEU_BLING_CLIENT_ID]";
+const BLING_AUTH_URL="https://www.bling.com.br/Api/v3/oauth/authorize";
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const uid=p=>p+"-"+Math.random().toString(36).slice(2,8);
@@ -863,6 +866,14 @@ function checarRetornoPagamento(){
     toast("Pagamento recebido! A liberação do plano Pro pode levar alguns minutos.");
     try{history.replaceState({},"",location.pathname+location.hash.replace(/[?&]assinou=1/,""));}catch(e){}
   }
+}
+function checarRetornoBling(){
+  const p=new URLSearchParams(location.search);
+  const st=p.get("bling");
+  if(!st)return;
+  if(st==="conectado")toast("Bling conectado! Já pode sincronizar em Configurações.");
+  else toast("Não deu para conectar ao Bling"+(p.get("msg")?": "+p.get("msg"):".")+" Tente de novo.");
+  try{history.replaceState({},"",location.pathname+location.hash);}catch(e){}
 }
 function planoEfetivo(){
   if(MODO_DEMO)return "pro";
@@ -3215,6 +3226,17 @@ ROUTES.config=(v)=>{
       <button class="btn sm" data-cvcopy="${esc(cv.codigo)}">Copiar link</button><button class="btn sm danger" data-cvrm="${esc(cv.codigo)}">Cancelar</button></div>`).join("")}</div>`:""}
   </div>
 
+  <div class="card pad" style="margin-bottom:16px"><div class="between" style="margin-bottom:10px"><h3>Integração com o Bling</h3>
+      ${EMPRESA?.bling_conectado?'<span class="pill good">Conectado</span>':'<span class="pill">Não conectado</span>'}</div>
+    <p class="small muted" style="margin:0 0 12px">Puxa Ordens de Serviço, Clientes e Produtos direto do Bling — sem digitar nem importar PDF.</p>
+    ${!adm?`<p class="small muted">Só o administrador conecta e sincroniza com o Bling.</p>`:!BLING_CLIENT_ID||BLING_CLIENT_ID.startsWith("[")?`
+      <p class="small muted">A Banheza ainda está configurando essa integração. Em breve.</p>`:EMPRESA?.bling_conectado?`
+      <p class="small" style="margin:0 0 10px">${EMPRESA.bling_ultima_sync?"Última sincronização: "+fmtDT(EMPRESA.bling_ultima_sync):"Ainda não sincronizado."}</p>
+      ${EMPRESA.bling_ultimo_erro?`<div class="alertbox" style="margin-bottom:10px"><span>!</span><div>${esc(EMPRESA.bling_ultimo_erro)}</div></div>`:""}
+      <div class="actionbar"><button class="btn primary sm" id="blingSync">Sincronizar agora</button><button class="btn sm danger" id="blingDesc">Desconectar</button></div>`:`
+      <button class="btn primary sm" id="blingConectar">Conectar ao Bling</button>`}
+  </div>
+
   <div class="card pad" style="margin-bottom:16px"><h3 style="margin-bottom:8px">Segurança e dados</h3>
     <p class="small" id="syncinfo" style="margin:0 0 6px"></p>
     <ul class="small muted" style="line-height:1.8;margin:6px 0 0;padding-left:18px">
@@ -3247,6 +3269,26 @@ ROUTES.config=(v)=>{
     cc.osExterna=v.querySelector("#cOsExt").value.trim();
     audit("Edição","Identidade","main",cc.empresa);persist();
     renderNav();renderRole();toast("Identidade salva.");router();
+  });
+  v.querySelector("#blingConectar")&&(v.querySelector("#blingConectar").onclick=()=>{
+    const url=BLING_AUTH_URL+"?response_type=code&client_id="+encodeURIComponent(BLING_CLIENT_ID)+"&state="+encodeURIComponent(PERFIL.empresa_id);
+    location.href=url;
+  });
+  v.querySelector("#blingSync")&&(v.querySelector("#blingSync").onclick=async()=>{
+    const b=v.querySelector("#blingSync");b.disabled=true;b.textContent="Sincronizando…";
+    try{
+      const{data,error}=await supa.functions.invoke("bling-sync");
+      if(error)throw error;
+      if(data&&data.ok)toast(`Sincronizado: ${data.os} OS, ${data.clientes} clientes, ${data.produtos} produtos.`);
+      else toast(data&&data.msg?data.msg:"Não foi possível sincronizar.");
+      await carregarTudo();router();
+    }catch(e){toast("Erro ao sincronizar: "+(e.message||e));}
+    finally{if(v.querySelector("#blingSync")){b.disabled=false;b.textContent="Sincronizar agora";}}
+  });
+  v.querySelector("#blingDesc")&&(v.querySelector("#blingDesc").onclick=async()=>{
+    if(!confirm("Desconectar o Bling? A sincronização automática para até você conectar de novo."))return;
+    try{await supa.rpc("bling_desconectar");EMPRESA.bling_conectado=false;toast("Bling desconectado.");router();}
+    catch(e){toast("Erro ao desconectar: "+(e.message||e));}
   });
   v.querySelector("#addMed")&&(v.querySelector("#addMed").onclick=()=>{
     const nome=prompt("Nome do campo de medição (ex.: Pressão, Vazão, pH)");if(!nome)return;
@@ -3381,7 +3423,7 @@ $("#themebtn").onclick=()=>{
 
 async function boot(){
   document.documentElement.setAttribute("data-hidden-app","");   // esconde o app até resolver a sessão
-  checarRetornoPagamento();
+  checarRetornoPagamento();checarRetornoBling();
   mostrarSplash();
   const libOk=await loadSupaLib();
   if(!libOk){ MODO_DEMO=true; return mostrarLogin("Não foi possível carregar a biblioteca."); }
