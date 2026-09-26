@@ -1065,7 +1065,15 @@ function ind(){
   const prevVenc=DB.preventivas.filter(p=>ativo(p)&&preventivaStatus(p).venc);
   const prevProx=DB.preventivas.filter(p=>ativo(p)&&!preventivaStatus(p).venc&&preventivaStatus(p).prox);
   const kmMes=DB.jornadas.filter(j=>ativo(j)&&j.kmFinal&&new Date(j.criadaEm).getMonth()===mes).reduce((s,j)=>s+(j.kmFinal-j.kmInicial),0);
-  return{mntMes,osAbertas,osPeca,osRetorno,estCrit,solPend,prevVenc,prevProx,kmMes};
+  /* visitas técnicas agendadas (cliente) e próximas ações de manutenção — alerta 7 dias antes */
+  const hoje=nowISO().slice(0,10),em7=new Date(now);em7.setDate(em7.getDate()+7);const lim7=em7.toISOString().slice(0,10);
+  const visitaData=c=>(c.visitaProxima||"").slice(0,10);
+  const visitasVenc=DB.clientes.filter(c=>ativo(c)&&visitaData(c)&&visitaData(c)<hoje);
+  const visitasProx=DB.clientes.filter(c=>ativo(c)&&visitaData(c)&&visitaData(c)>=hoje&&visitaData(c)<=lim7);
+  const acaoData=m=>(m.proximaData||"").slice(0,10);
+  const acoesVenc=DB.manutencoes.filter(m=>ativo(m)&&m.proximaAcao&&m.proximaAcao!=="nenhuma"&&acaoData(m)&&acaoData(m)<hoje);
+  const acoesProx=DB.manutencoes.filter(m=>ativo(m)&&m.proximaAcao&&m.proximaAcao!=="nenhuma"&&acaoData(m)&&acaoData(m)>=hoje&&acaoData(m)<=lim7);
+  return{mntMes,osAbertas,osPeca,osRetorno,estCrit,solPend,prevVenc,prevProx,kmMes,visitasVenc,visitasProx,acoesVenc,acoesProx};
 }
 
 /* ---------- navegação ---------- */
@@ -1467,6 +1475,7 @@ ROUTES.painel=v=>{
     <a class="kpi ${i.estCrit.length?"crit":"good"}" href="#/estoque" style="text-decoration:none;color:inherit"><div class="lab">Estoque crítico</div><div class="val tnum">${i.estCrit.length}</div><div class="sub">itens no/abaixo do mínimo</div></a>
     <a class="kpi ${i.solPend.length?"warn":""}" href="#/estoque" style="text-decoration:none;color:inherit"><div class="lab">Solicitações de peça</div><div class="val tnum">${i.solPend.length}</div><div class="sub">pendentes</div></a>
     <a class="kpi ${i.prevVenc.length?"crit":i.prevProx.length?"warn":"good"}" href="#/veiculos" style="text-decoration:none;color:inherit"><div class="lab">Preventivas vencidas</div><div class="val tnum">${i.prevVenc.length}</div><div class="sub">${i.prevProx.length} próxima(s) do vencimento</div></a>
+    <a class="kpi ${i.visitasVenc.length?"crit":i.visitasProx.length?"warn":"good"}" href="#/clientes" style="text-decoration:none;color:inherit"><div class="lab">Visitas técnicas</div><div class="val tnum">${i.visitasVenc.length}</div><div class="sub">${i.visitasProx.length} nos próximos 7 dias</div></a>
   </div>
   <div class="detailgrid two">
     <div class="panel">
@@ -1485,7 +1494,11 @@ ROUTES.painel=v=>{
           ${i.estCrit.map(p=>`<div class="item"><span class="dot" style="color:var(--crit)"></span><div><div class="t">${esc(p.descricao)}</div><div class="d">Estoque ${p.estoque} · mínimo ${p.minimo}</div></div></div>`).join("")}
           ${i.prevVenc.map(p=>`<div class="item"><span class="dot" style="color:var(--crit)"></span><div><div class="t">${esc(p.tipo)} · ${esc(byId("veiculos",p.veiculoId)?.placa)}</div><div class="d">Preventiva vencida</div></div></div>`).join("")}
           ${i.osPeca.map(o=>`<div class="item"><span class="dot" style="color:var(--warn)"></span><div><div class="t">${esc(o.numeroBling)}</div><div class="d">OS aguardando peça</div></div></div>`).join("")}
-          ${(!i.estCrit.length&&!i.prevVenc.length&&!i.osPeca.length)?'<div class="emptyst small">Nenhum alerta ativo.</div>':""}
+          ${i.visitasVenc.map(c=>`<a class="item" href="#/clientes/${c.id}"><span class="dot" style="color:var(--crit)"></span><div><div class="t">${esc(c.fantasia||c.razao)}</div><div class="d">Visita técnica atrasada · ${fmtDate(c.visitaProxima)}</div></div></a>`).join("")}
+          ${i.visitasProx.map(c=>`<a class="item" href="#/clientes/${c.id}"><span class="dot" style="color:var(--warn)"></span><div><div class="t">${esc(c.fantasia||c.razao)}</div><div class="d">Visita técnica em breve · ${fmtDate(c.visitaProxima)}</div></div></a>`).join("")}
+          ${i.acoesVenc.map(m=>`<a class="item" href="#/manutencoes/${m.id}"><span class="dot" style="color:var(--crit)"></span><div><div class="t">${esc(eqNome(m.equipamentoId))}</div><div class="d">Ação agendada atrasada — ${esc(PROX_ACOES[m.proximaAcao]||m.proximaAcao)} · ${fmtDate(m.proximaData)}</div></div></a>`).join("")}
+          ${i.acoesProx.map(m=>`<a class="item" href="#/manutencoes/${m.id}"><span class="dot" style="color:var(--warn)"></span><div><div class="t">${esc(eqNome(m.equipamentoId))}</div><div class="d">Ação agendada em breve — ${esc(PROX_ACOES[m.proximaAcao]||m.proximaAcao)} · ${fmtDate(m.proximaData)}</div></div></a>`).join("")}
+          ${(!i.estCrit.length&&!i.prevVenc.length&&!i.osPeca.length&&!i.visitasVenc.length&&!i.visitasProx.length&&!i.acoesVenc.length&&!i.acoesProx.length)?'<div class="emptyst small">Nenhum alerta ativo.</div>':""}
         </div>
       </div>
       <div class="panel">
