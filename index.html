@@ -1475,7 +1475,7 @@ ROUTES.painel=v=>{
     <a class="kpi ${i.estCrit.length?"crit":"good"}" href="#/estoque" style="text-decoration:none;color:inherit"><div class="lab">Estoque crítico</div><div class="val tnum">${i.estCrit.length}</div><div class="sub">itens no/abaixo do mínimo</div></a>
     <a class="kpi ${i.solPend.length?"warn":""}" href="#/estoque" style="text-decoration:none;color:inherit"><div class="lab">Solicitações de peça</div><div class="val tnum">${i.solPend.length}</div><div class="sub">pendentes</div></a>
     <a class="kpi ${i.prevVenc.length?"crit":i.prevProx.length?"warn":"good"}" href="#/veiculos" style="text-decoration:none;color:inherit"><div class="lab">Preventivas vencidas</div><div class="val tnum">${i.prevVenc.length}</div><div class="sub">${i.prevProx.length} próxima(s) do vencimento</div></a>
-    <a class="kpi ${i.visitasVenc.length?"crit":i.visitasProx.length?"warn":"good"}" href="#/clientes" style="text-decoration:none;color:inherit"><div class="lab">Visitas técnicas</div><div class="val tnum">${i.visitasVenc.length}</div><div class="sub">${i.visitasProx.length} nos próximos 7 dias</div></a>
+    <a class="kpi ${i.visitasVenc.length?"crit":i.visitasProx.length?"warn":"good"}" href="${i.visitasVenc.length+i.visitasProx.length===1?"#/clientes/"+(i.visitasVenc[0]||i.visitasProx[0]).id:"#/clientes"}" style="text-decoration:none;color:inherit"><div class="lab">Visitas técnicas</div><div class="val tnum">${i.visitasVenc.length}</div><div class="sub">${i.visitasProx.length} nos próximos 7 dias</div></a>
   </div>
   <div class="detailgrid two">
     <div class="panel">
