@@ -1767,8 +1767,9 @@ function equipForm(v,e){
   v.innerHTML=`<a class="btn ghost sm" href="#/equipamentos">← Cancelar</a>
   <div class="pagehead"><h1>${e?"Editar "+esc(eqLabel().toLowerCase()):"Cadastrar "+esc(eqLabel())}</h1><p>Cadastro único. Características permanentes ficam aqui; o técnico não repete isso a cada visita.</p></div>
   <div class="card pad"><div class="formgrid">
-    <label class="f full">Puxar modelo do cadastro de produtos (opcional)
-      <select id="produtoBase"><option value="">— Digitar manualmente —</option>${DB.produtos.filter(ativo).map(p=>`<option value="${p.id}"${x.produtoId===p.id?" selected":""}>${esc(p.codigo)} · ${esc(p.descricao)}</option>`).join("")}</select></label>
+    <label class="f full">Puxar modelo do cadastro de produtos (opcional)<span class="small muted"> — digite pra buscar</span>
+      <input id="produtoBase" list="produtoBaseList" autocomplete="off" placeholder="Código ou descrição do produto…" value="${(()=>{const p=byId("produtos",x.produtoId);return p?esc(p.codigo+" · "+p.descricao):"";})()}">
+      <datalist id="produtoBaseList">${DB.produtos.filter(ativo).map(p=>`<option value="${esc(p.codigo+" · "+p.descricao)}">`).join("")}</datalist></label>
     <label class="f">NS (número de série) <span class="rq">*</span><input id="ns" class="mono" value="${esc(x.ns||"")}"${e?" ":""}></label>
     <label class="f">Modelo<input id="modelo" value="${esc(x.modelo||"")}"></label>
     <label class="f">Fabricante<input id="fabricante" value="${esc(x.fabricante||"")}"></label>
@@ -1790,10 +1791,13 @@ function equipForm(v,e){
     <label class="f">${esc(cf.nome)}${cf.obrig?' <span class="rq">*</span>':""}
       <input data-cf="${cf.id}" ${cf.tipo==="numero"?'type="number" step="any"':""} value="${esc(x.camposValores?.[cf.id]||"")}"></label>`).join("")}</div>
   <div class="mf" style="border:0;padding:16px 0 0"><button class="btn" onclick="location.hash='#/equipamentos'">Cancelar</button><button class="btn primary" id="save">Salvar</button></div></div>`;
-  v.querySelector("#produtoBase").onchange=ev=>{
-    const p=byId("produtos",ev.target.value);if(!p)return;
-    v.querySelector("#modelo").value=p.descricao||"";
+  const acharProdutoDigitado=()=>{
+    const txt=v.querySelector("#produtoBase").value.trim();
+    return DB.produtos.find(p=>ativo(p)&&(p.codigo+" · "+p.descricao)===txt);
   };
+  v.querySelector("#produtoBase").addEventListener("input",()=>{
+    const p=acharProdutoDigitado();if(p)v.querySelector("#modelo").value=p.descricao||"";
+  });
   ligarCep(v.querySelector("#cep"),j=>{
     v.querySelector("#endereco").value=[j.logradouro,j.bairro,j.localidade&&j.uf?j.localidade+"/"+j.uf:""].filter(Boolean).join(", ");
   });
@@ -1803,7 +1807,7 @@ function equipForm(v,e){
     if(!e&&DB.equipamentos.some(q=>q.ns===g("ns")))return toast("NS já cadastrado.");
     const camposValores={};v.querySelectorAll("[data-cf]").forEach(inp=>camposValores[inp.dataset.cf]=inp.value.trim());
     for(const cf of DB.camposTecnicos.filter(c=>ativo(c)&&c.obrig))if(!camposValores[cf.id])return toast("Campo obrigatório: "+cf.nome);
-    const data={ns:g("ns"),produtoId:v.querySelector("#produtoBase").value||null,modelo:g("modelo"),fabricante:g("fabricante"),dataFab:g("dataFab"),dataInstal:g("dataInstal"),status:v.querySelector("#status").value,clienteId:v.querySelector("#clienteId").value,vinculo:v.querySelector("#vinculo").value,classAtend:v.querySelector("#classAtend").value,local:g("local"),cep:g("cep"),endereco:g("endereco"),setor:g("setor"),obsInstal:g("obsInstal"),camposValores};
+    const data={ns:g("ns"),produtoId:acharProdutoDigitado()?.id||null,modelo:g("modelo"),fabricante:g("fabricante"),dataFab:g("dataFab"),dataInstal:g("dataInstal"),status:v.querySelector("#status").value,clienteId:v.querySelector("#clienteId").value,vinculo:v.querySelector("#vinculo").value,classAtend:v.querySelector("#classAtend").value,local:g("local"),cep:g("cep"),endereco:g("endereco"),setor:g("setor"),obsInstal:g("obsInstal"),camposValores};
     if(e){Object.assign(e,data);audit("Edição","Equipamento",e.id);persist();location.hash="#/equipamentos/"+e.id;}
     else{const n={id:uid("eq"),criadoEm:nowISO(),...data,instalacoes:[{clienteId:data.clienteId,inicio:data.dataInstal||nowISO(),fim:null}]};DB.equipamentos.unshift(n);audit("Criação","Equipamento",n.id);persist();location.hash="#/equipamentos/"+n.id;}
     toast("Equipamento salvo.");
