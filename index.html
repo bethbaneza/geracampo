@@ -446,6 +446,27 @@ const BLING_AUTH_URL="https://www.bling.com.br/Api/v3/oauth/authorize";
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const uid=p=>p+"-"+Math.random().toString(36).slice(2,8);
+/* CEP -> endereço automático (ViaCEP, sem chave) */
+function ligarCep(el,onAchou){
+  if(!el)return;
+  let ultimo="";
+  const buscar=async()=>{
+    const cep=el.value.replace(/\D/g,"");
+    if(cep.length!==8||cep===ultimo)return;
+    ultimo=cep;
+    try{
+      const r=await fetch("https://viacep.com.br/ws/"+cep+"/json/");
+      const j=await r.json();
+      if(j&&!j.erro)onAchou(j);else toast("CEP não encontrado.");
+    }catch(e){/* sem internet: usuário preenche à mão */}
+  };
+  el.addEventListener("input",()=>{
+    const d=el.value.replace(/\D/g,"").slice(0,8);
+    el.value=d.length>5?d.slice(0,5)+"-"+d.slice(5):d;
+    if(d.length===8)buscar();
+  });
+  el.addEventListener("blur",buscar);
+}
 const nowISO=()=>new Date().toISOString();
 const fmtDate=d=>d?new Date(d).toLocaleDateString("pt-BR"):"—";
 const fmtDT=d=>d?new Date(d).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";
@@ -740,8 +761,8 @@ function seed(){
     {id:"pr-5",codigo:"KIT-VED",descricao:"Kit de vedação",referencia:"KV-3",barras:"7891000000053",estoque:14,minimo:5,custo:38,fonte:"Bling"}
   ];
   const ordens=[
-    {id:"os-1",numeroBling:"OS-24817",criadaEm:d(3),clienteId:"cli-1",descricao:"Cliente relata baixa produção de cloro.",status:"aberta",equipamentoId:null,tipoAtendimento:null,situacaoCobranca:"Não se aplica"},
-    {id:"os-2",numeroBling:"OS-24820",criadaEm:d(2),clienteId:"cli-2",descricao:"Alarme de fluxo intermitente.",status:"aberta",equipamentoId:null,tipoAtendimento:null,situacaoCobranca:"A definir"},
+    {id:"os-1",numeroBling:"OS-24817",criadaEm:d(3),clienteId:"cli-1",descricao:"Cliente relata baixa produção de cloro.",status:"aberta",equipamentoIds:[],tipoAtendimento:null,situacaoCobranca:"Não se aplica"},
+    {id:"os-2",numeroBling:"OS-24820",criadaEm:d(2),clienteId:"cli-2",descricao:"Alarme de fluxo intermitente.",status:"aberta",equipamentoIds:[],tipoAtendimento:null,situacaoCobranca:"A definir"},
     {id:"os-3",numeroBling:"OS-24790",criadaEm:d(12),clienteId:"cli-3",descricao:"Orçamento de substituição de equipamento.",status:"aguardando_retorno",equipamentoId:"eq-3",tipoAtendimento:"assistencia",situacaoCobranca:"Orçamento pendente"}
   ];
   const manutencoes=[
@@ -982,6 +1003,9 @@ function audit(acao,entidade,id,detalhe){
 const byId=(arr,id)=>DB[arr].find(x=>x.id===id);
 const cliNome=id=>byId("clientes",id)?.fantasia||byId("clientes",id)?.razao||"—";
 const eqNome=id=>{const e=byId("equipamentos",id);return e?e.ns+" · "+e.modelo:"—";};
+/* lista de equipamentos de uma OS — aceita o.equipamentoIds (novo) ou o.equipamentoId (registros antigos) */
+const osEquipIds=o=>o.equipamentoIds&&o.equipamentoIds.length?o.equipamentoIds:(o.equipamentoId?[o.equipamentoId]:[]);
+const osEquipTxt=o=>{const ids=osEquipIds(o);return ids.length?ids.map(eqNome).join(", "):"—";};
 const tecNome=id=>byId("tecnicos",id)?.nome||"—";
 const tecNomes=ids=>(ids||[]).map(tecNome).filter(n=>n&&n!=="—").join(", ");
 const veiNome=id=>{const v=byId("veiculos",id);return v?v.placa+" · "+v.marcaModelo:"—";};
@@ -1565,7 +1589,8 @@ function clienteForm(v,c){
     <label class="f">CPF / CNPJ <span class="rq">*</span><input id="doc" value="${esc(e.doc||"")}"></label>
     <label class="f">Telefone / WhatsApp<input id="tel" value="${esc(e.tel||"")}"></label>
     <label class="f">E-mail<input id="email" value="${esc(e.email||"")}"></label>
-    <label class="f">Endereço<input id="endereco" value="${esc(e.endereco||"")}"></label>
+    <label class="f">CEP<input id="cep" class="mono" value="${esc(e.cep||"")}" placeholder="00000-000" inputmode="numeric" maxlength="9"></label>
+    <label class="f">Endereço<input id="endereco" value="${esc(e.endereco||"")}" placeholder="Preenche sozinho pelo CEP, ou digite"></label>
     <label class="f">Cidade / UF<input id="cidade" value="${esc(e.cidade||"")}"></label>
     <label class="f">Contatos<input id="contatos" value="${esc(e.contatos||"")}"></label>
     <label class="f">Código / ID no Bling<input id="blingId" value="${esc(e.blingId||"")}"></label>
@@ -1583,6 +1608,10 @@ function clienteForm(v,c){
   <label class="f full" style="margin-top:14px">Observações<textarea id="obs">${esc(e.obs||"")}</textarea></label>
   <div class="mf" style="border:0;padding:14px 0 0"><button class="btn" onclick="location.hash='#/clientes'">Cancelar</button><button class="btn primary" id="save">Salvar</button></div></div>`;
   if(CLI_PREFILL&&!c){preencherClienteForm(v,CLI_PREFILL);CLI_PREFILL=null;}
+  ligarCep(v.querySelector("#cep"),j=>{
+    v.querySelector("#endereco").value=[j.logradouro,j.bairro].filter(Boolean).join(", ");
+    v.querySelector("#cidade").value=[j.localidade,j.uf].filter(Boolean).join("/");
+  });
   const pIn=v.querySelector("#cliPdfInput");
   v.querySelector("#cliPdf")&&(v.querySelector("#cliPdf").onclick=()=>{pIn.value="";pIn.click();});
   pIn&&(pIn.onchange=async ev=>{
@@ -1603,7 +1632,7 @@ function clienteForm(v,c){
   v.querySelector("#save").onclick=()=>{
     const g=id=>v.querySelector("#"+id).value.trim();
     if(!g("razao")||!g("doc"))return toast("Razão social e CPF/CNPJ são obrigatórios.");
-    const data={razao:g("razao"),fantasia:g("fantasia"),doc:g("doc"),tel:g("tel"),email:g("email"),endereco:g("endereco"),cidade:g("cidade"),contatos:g("contatos"),blingId:g("blingId"),relacao:v.querySelector("#relacao").value,
+    const data={razao:g("razao"),fantasia:g("fantasia"),doc:g("doc"),tel:g("tel"),email:g("email"),cep:g("cep"),endereco:g("endereco"),cidade:g("cidade"),contatos:g("contatos"),blingId:g("blingId"),relacao:v.querySelector("#relacao").value,
       visitaPeriodo:v.querySelector("#visitaPeriodo").value,visitaProxima:g("visitaProxima")||null,visitaObs:g("visitaObs"),obs:g("obs")};
     if(c){Object.assign(c,data);audit("Edição","Cliente",c.id);}
     else{const n={id:uid("cli"),criadoEm:nowISO(),...data};DB.clientes.unshift(n);audit("Criação","Cliente",n.id);c=n;}
@@ -1738,6 +1767,8 @@ function equipForm(v,e){
   v.innerHTML=`<a class="btn ghost sm" href="#/equipamentos">← Cancelar</a>
   <div class="pagehead"><h1>${e?"Editar "+esc(eqLabel().toLowerCase()):"Cadastrar "+esc(eqLabel())}</h1><p>Cadastro único. Características permanentes ficam aqui; o técnico não repete isso a cada visita.</p></div>
   <div class="card pad"><div class="formgrid">
+    <label class="f full">Puxar modelo do cadastro de produtos (opcional)
+      <select id="produtoBase"><option value="">— Digitar manualmente —</option>${DB.produtos.filter(ativo).map(p=>`<option value="${p.id}"${x.produtoId===p.id?" selected":""}>${esc(p.codigo)} · ${esc(p.descricao)}</option>`).join("")}</select></label>
     <label class="f">NS (número de série) <span class="rq">*</span><input id="ns" class="mono" value="${esc(x.ns||"")}"${e?" ":""}></label>
     <label class="f">Modelo<input id="modelo" value="${esc(x.modelo||"")}"></label>
     <label class="f">Fabricante<input id="fabricante" value="${esc(x.fabricante||"")}"></label>
@@ -1748,7 +1779,8 @@ function equipForm(v,e){
     <label class="f">Tipo de vínculo<select id="vinculo"><option value="locado"${x.vinculo==="locado"?" selected":""}>locado</option><option value="proprio"${x.vinculo==="proprio"?" selected":""}>próprio</option><option value="outro"${x.vinculo==="outro"?" selected":""}>outro</option></select></label>
     <label class="f">Classificação de atendimento<select id="classAtend"><option value="">—</option>${Object.entries(TIPOS_ATEND).map(([k,val])=>`<option value="${k}"${x.classAtend===k?" selected":""}>${val}</option>`).join("")}</select></label>
     <label class="f">Local de instalação<input id="local" value="${esc(x.local||"")}"></label>
-    <label class="f">Endereço / localização<input id="endereco" value="${esc(x.endereco||"")}"></label>
+    <label class="f">CEP<input id="cep" class="mono" value="${esc(x.cep||"")}" placeholder="00000-000" inputmode="numeric" maxlength="9"></label>
+    <label class="f">Endereço / localização<input id="endereco" value="${esc(x.endereco||"")}" placeholder="Preenche sozinho pelo CEP, ou digite"></label>
     <label class="f">${esc(setorLabel())}<input id="setor" value="${esc(x.setor||"")}"></label>
     <label class="f full">Observações de instalação<textarea id="obsInstal">${esc(x.obsInstal||"")}</textarea></label>
   </div>
@@ -1758,13 +1790,20 @@ function equipForm(v,e){
     <label class="f">${esc(cf.nome)}${cf.obrig?' <span class="rq">*</span>':""}
       <input data-cf="${cf.id}" ${cf.tipo==="numero"?'type="number" step="any"':""} value="${esc(x.camposValores?.[cf.id]||"")}"></label>`).join("")}</div>
   <div class="mf" style="border:0;padding:16px 0 0"><button class="btn" onclick="location.hash='#/equipamentos'">Cancelar</button><button class="btn primary" id="save">Salvar</button></div></div>`;
+  v.querySelector("#produtoBase").onchange=ev=>{
+    const p=byId("produtos",ev.target.value);if(!p)return;
+    v.querySelector("#modelo").value=p.descricao||"";
+  };
+  ligarCep(v.querySelector("#cep"),j=>{
+    v.querySelector("#endereco").value=[j.logradouro,j.bairro,j.localidade&&j.uf?j.localidade+"/"+j.uf:""].filter(Boolean).join(", ");
+  });
   v.querySelector("#save").onclick=()=>{
     const g=id=>v.querySelector("#"+id).value.trim();
     if(!g("ns"))return toast("NS é obrigatório.");
     if(!e&&DB.equipamentos.some(q=>q.ns===g("ns")))return toast("NS já cadastrado.");
     const camposValores={};v.querySelectorAll("[data-cf]").forEach(inp=>camposValores[inp.dataset.cf]=inp.value.trim());
     for(const cf of DB.camposTecnicos.filter(c=>ativo(c)&&c.obrig))if(!camposValores[cf.id])return toast("Campo obrigatório: "+cf.nome);
-    const data={ns:g("ns"),modelo:g("modelo"),fabricante:g("fabricante"),dataFab:g("dataFab"),dataInstal:g("dataInstal"),status:v.querySelector("#status").value,clienteId:v.querySelector("#clienteId").value,vinculo:v.querySelector("#vinculo").value,classAtend:v.querySelector("#classAtend").value,local:g("local"),endereco:g("endereco"),setor:g("setor"),obsInstal:g("obsInstal"),camposValores};
+    const data={ns:g("ns"),produtoId:v.querySelector("#produtoBase").value||null,modelo:g("modelo"),fabricante:g("fabricante"),dataFab:g("dataFab"),dataInstal:g("dataInstal"),status:v.querySelector("#status").value,clienteId:v.querySelector("#clienteId").value,vinculo:v.querySelector("#vinculo").value,classAtend:v.querySelector("#classAtend").value,local:g("local"),cep:g("cep"),endereco:g("endereco"),setor:g("setor"),obsInstal:g("obsInstal"),camposValores};
     if(e){Object.assign(e,data);audit("Edição","Equipamento",e.id);persist();location.hash="#/equipamentos/"+e.id;}
     else{const n={id:uid("eq"),criadoEm:nowISO(),...data,instalacoes:[{clienteId:data.clienteId,inicio:data.dataInstal||nowISO(),fim:null}]};DB.equipamentos.unshift(n);audit("Criação","Equipamento",n.id);persist();location.hash="#/equipamentos/"+n.id;}
     toast("Equipamento salvo.");
@@ -1774,22 +1813,26 @@ function equipForm(v,e){
 /* ============ ORDENS DE SERVIÇO ============ */
 ROUTES.os=(v,rest)=>{
   if(rest[0])return osDetalhe(v,rest[0]);
-  let f="todas";
+  let f="ativas",q="";
   const draw=()=>{
     let list=DB.ordens.filter(ativo);
-    if(f!=="todas")list=list.filter(o=>o.status===f);
+    if(f==="ativas")list=list.filter(o=>o.status==="aberta"||o.status==="em_atendimento");
+    else if(f!=="todas")list=list.filter(o=>o.status===f);
+    if(q)list=list.filter(o=>[o.numeroBling,cliNome(o.clienteId),o.descricao].join(" ").toLowerCase().includes(q.toLowerCase()));
     v.querySelector("#oslist").innerHTML=list.map(o=>`
       <a class="item" href="#/os/${o.id}"><span class="avatar">OS</span>
-      <div><div class="t">${esc(o.numeroBling)} · ${esc(cliNome(o.clienteId))}</div><div class="d">${esc(o.descricao)} ${o.equipamentoId?"· "+esc(eqNome(o.equipamentoId)):""}</div></div>
-      <span class="sp"></span>${o.origem==="pdf"?'<span class="pill">PDF</span>':""}${o.tipoAtendimento?tipoAtendPill(o.tipoAtendimento):""}${osStatusPill(o.status)}</a>`).join("")||'<div class="emptyst">Nenhuma OS.</div>';
+      <div><div class="t">${esc(o.numeroBling)} · ${esc(cliNome(o.clienteId))}</div><div class="d">${esc(o.descricao)} · ${esc(osEquipTxt(o))}</div></div>
+      <span class="sp"></span>${o.origem==="pdf"?'<span class="pill">PDF</span>':""}${o.tipoAtendimento?tipoAtendPill(o.tipoAtendimento):""}${osStatusPill(o.status)}</a>`).join("")||'<div class="emptyst">Nenhuma OS neste filtro.</div>';
   };
   v.innerHTML=`<div class="pagehead between"><div><h1>Ordens de Serviço</h1><p>Cadastre a OS manualmente ou <b>importe o PDF da OS</b> (o app lê número, cliente e descrição). O número é só referência enquanto não há integração automática.</p></div>
     ${can("criar")?`<div class="actionbar"><button class="btn primary" id="novaOS">+ Nova OS</button><button class="btn" id="importPdf">Importar OS (PDF)</button><button class="btn ghost" id="import">Gerar OS de exemplo</button><input type="file" id="pdfInput" accept="application/pdf" hidden></div>`:""}</div>
+  <div class="searchbar" style="margin-bottom:12px"><span class="ic">⌕</span><input id="ossearch" placeholder="Buscar por número, cliente ou descrição…"></div>
   <div class="chips" style="margin-bottom:14px">
-    ${[["todas","Todas"],["aberta","Abertas"],["em_atendimento","Em atendimento"],["aguardando_peca","Aguardando peça"],["aguardando_retorno","Aguardando retorno"],["encerrada","Encerradas"]].map(([k,l],ix)=>`<button class="chip${ix===0?" on":""}" data-f="${k}">${l}</button>`).join("")}
+    ${[["ativas","Ativas"],["todas","Todas"],["aberta","Abertas"],["em_atendimento","Em atendimento"],["aguardando_peca","Aguardando peça"],["aguardando_retorno","Aguardando retorno"],["encerrada","Encerradas"]].map(([k,l],ix)=>`<button class="chip${ix===0?" on":""}" data-f="${k}">${l}</button>`).join("")}
   </div>
   <div class="panel"><div class="list" id="oslist"></div></div>`;
   v.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{v.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));c.classList.add("on");f=c.dataset.f;draw();});
+  v.querySelector("#ossearch").oninput=e=>{q=e.target.value;draw();};
   const nextNum=()=>{
     const nums=DB.ordens.map(o=>parseInt(String(o.numeroBling).replace(/\D/g,""),10)).filter(n=>!isNaN(n));
     return "OS-"+((nums.length?Math.max(...nums):24800)+1);
@@ -1812,7 +1855,7 @@ ROUTES.os=(v,rest)=>{
       if(!num)return toast("Informe o número da OS.");
       if(DB.ordens.some(o=>ativo(o)&&o.numeroBling.toLowerCase()===num.toLowerCase()))return toast("Já existe uma OS com esse número.");
       const dt=$("#odata").value?new Date($("#odata").value+"T09:00:00").toISOString():nowISO();
-      const n={id:uid("os"),numeroBling:num,criadaEm:dt,clienteId:$("#ocli").value,descricao:$("#odesc").value.trim()||"(sem descrição)",status:"aberta",equipamentoId:null,tipoAtendimento:null,situacaoCobranca:$("#osc").value,origem:"manual"};
+      const n={id:uid("os"),numeroBling:num,criadaEm:dt,clienteId:$("#ocli").value,descricao:$("#odesc").value.trim()||"(sem descrição)",status:"aberta",equipamentoIds:[],tipoAtendimento:null,situacaoCobranca:$("#osc").value,origem:"manual"};
       DB.ordens.unshift(n);audit("Criação","OS",n.id,"cadastro manual");persist();closeModal();toast("OS "+num+" criada.");location.hash="#/os/"+n.id;
     };
   });
@@ -1835,7 +1878,7 @@ ROUTES.os=(v,rest)=>{
     const cli=DB.clientes.filter(ativo);if(!cli.length)return toast("Cadastre um cliente primeiro.");
     const c=cli[Math.floor(Math.random()*cli.length)];
     const exemplos=["Cliente relata baixa produção de cloro.","Alarme de fluxo intermitente.","Equipamento sem ligar.","Vazamento na célula.","Ruído anormal na bomba.","Revisão preventiva agendada."];
-    const n={id:uid("os"),numeroBling:nextNum(),criadaEm:nowISO(),clienteId:c.id,descricao:exemplos[Math.floor(Math.random()*exemplos.length)],status:"aberta",equipamentoId:null,tipoAtendimento:null,situacaoCobranca:"Não se aplica",origem:"exemplo"};
+    const n={id:uid("os"),numeroBling:nextNum(),criadaEm:nowISO(),clienteId:c.id,descricao:exemplos[Math.floor(Math.random()*exemplos.length)],status:"aberta",equipamentoIds:[],tipoAtendimento:null,situacaoCobranca:"Não se aplica",origem:"exemplo"};
     DB.ordens.unshift(n);audit("Criação","OS",n.id,"OS de exemplo");persist();toast("OS "+n.numeroBling+" criada.");draw();
   });
   draw();
@@ -1867,7 +1910,7 @@ function osImportModal(r,fileName,dataUrl){
     if(!num)return toast("Informe o número da OS.");
     if(DB.ordens.some(o=>ativo(o)&&o.numeroBling.toLowerCase()===num.toLowerCase()))return toast("Já existe uma OS com esse número.");
     const dt=$("#idata").value?new Date($("#idata").value+"T09:00:00").toISOString():nowISO();
-    const n={id:uid("os"),numeroBling:num,criadaEm:dt,clienteId:$("#icli").value,descricao:$("#idesc").value.trim()||"(sem descrição)",status:"aberta",equipamentoId:null,tipoAtendimento:null,situacaoCobranca:$("#isc").value,origem:"pdf",arquivoPdf:fileName,textoImportado:(r.bruto||"").slice(0,4000)};
+    const n={id:uid("os"),numeroBling:num,criadaEm:dt,clienteId:$("#icli").value,descricao:$("#idesc").value.trim()||"(sem descrição)",status:"aberta",equipamentoIds:[],tipoAtendimento:null,situacaoCobranca:$("#isc").value,origem:"pdf",arquivoPdf:fileName,textoImportado:(r.bruto||"").slice(0,4000)};
     DB.ordens.unshift(n);
     if(dataUrl&&dataUrl.length<6*1024*1024){try{saveFotoLocal("ospdf_"+n.id,dataUrl);}catch(e){}}
     audit("Importação","OS",n.id,"PDF: "+fileName);persist();closeModal();toast("OS "+num+" importada do PDF.");location.hash="#/os/"+n.id;
@@ -1875,10 +1918,11 @@ function osImportModal(r,fileName,dataUrl){
 }
 function osDetalhe(v,id){
   const o=byId("ordens",id);if(!o||!ativo(o))return v.innerHTML='<div class="alertbox crit">OS não encontrada.</div>';
-  const mnt=DB.manutencoes.find(m=>ativo(m)&&m.osId===id);
+  const mnts=DB.manutencoes.filter(m=>ativo(m)&&m.osId===id);
   const eqsCli=DB.equipamentos.filter(e=>ativo(e)&&e.clienteId===o.clienteId);
   const j=jornadaAberta();
   const osExt=CFG().osExterna||"";
+  const selecionados=new Set(osEquipIds(o));
   v.innerHTML=`<a class="btn ghost sm" href="#/os">← Ordens de Serviço</a>
   <div class="pagehead between"><div><h1>${esc(o.numeroBling)}</h1><p>${esc(cliNome(o.clienteId))} · aberta ${fmtDate(o.criadaEm)} · ${osStatusPill(o.status)}</p></div>
     <div class="actionbar">
@@ -1893,14 +1937,14 @@ function osDetalhe(v,id){
     <div class="stack">
       <div class="panel"><div class="ph"><h3>Vínculo técnico</h3></div><div class="pb" style="padding:16px">
         <div class="stepper">
-          <span class="s ${o.equipamentoId?"done":"on"}">1 · Equipamento/NS</span>
-          <span class="s ${o.tipoAtendimento?"done":o.equipamentoId?"on":""}">2 · Tipo de atendimento</span>
-          <span class="s ${mnt?"done":o.tipoAtendimento?"on":""}">3 · Iniciar atendimento</span>
+          <span class="s ${selecionados.size?"done":"on"}">1 · Equipamento/NS</span>
+          <span class="s ${o.tipoAtendimento?"done":selecionados.size?"on":""}">2 · Tipo de atendimento</span>
+          <span class="s ${mnts.length?"done":o.tipoAtendimento?"on":""}">3 · Iniciar atendimento</span>
         </div>
         <div class="formgrid">
           <label class="f">Cliente da OS<input value="${esc(cliNome(o.clienteId))}" disabled></label>
-          <label class="f">Equipamento / NS
-            <select id="eq"${!can("criar")?" disabled":""}><option value="">Selecionar…</option>${eqsCli.map(e=>`<option value="${e.id}"${o.equipamentoId===e.id?" selected":""}>${esc(e.ns)} · ${esc(e.modelo)}</option>`).join("")}</select></label>
+          <label class="f full">Equipamento / NS ${eqsCli.length>1?'<span class="small muted">(pode marcar mais de um)</span>':""}
+            <div class="chips" id="eqchips">${eqsCli.map(e=>`<button type="button" class="chip${selecionados.has(e.id)?" on":""}" data-eq="${e.id}"${!can("criar")?" disabled":""}>${esc(e.ns)} · ${esc(e.modelo)}</button>`).join("")||'<span class="small muted">Nenhum equipamento cadastrado para este cliente.</span>'}</div></label>
           <label class="f">Tipo de atendimento
             <select id="ta"${!can("criar")?" disabled":""}><option value="">Selecionar…</option>${Object.entries(TIPOS_ATEND).map(([k,val])=>`<option value="${k}"${o.tipoAtendimento===k?" selected":""}>${val}</option>`).join("")}</select></label>
           <label class="f">Situação da cobrança
@@ -1909,13 +1953,12 @@ function osDetalhe(v,id){
         <div id="nseqalert"></div>
         <div class="actionbar" style="margin-top:14px">
           ${can("criar")?`<button class="btn" id="savevinc">Salvar vínculo</button>`:""}
-          ${can("criar")&&!mnt?`<button class="btn primary" id="iniciar">Iniciar atendimento →</button>`:""}
-          ${mnt?`<a class="btn primary" href="#/manutencoes/${mnt.id}">Abrir manutenção</a>`:""}
+          ${can("criar")?`<button class="btn primary" id="iniciar">Iniciar atendimento →</button>`:""}
         </div>
         ${!j&&can("criar")?`<p class="small muted" style="margin-top:8px">Sem jornada aberta — <a href="#/jornada">inicie a jornada</a> antes de iniciar o atendimento.</p>`:""}
       </div></div>
-      ${mnt?`<div class="panel"><div class="ph"><h3>Manutenção vinculada</h3></div><div class="list">
-        <a class="item" href="#/manutencoes/${mnt.id}"><div><div class="t">${esc(mnt.servico||mnt.problema||"Registro de manutenção")}</div><div class="d">${esc(tecNome(mnt.tecnicoId))} · ${fmtDT(mnt.criadaEm)}</div></div><span class="sp"></span><span class="pill ${mnt.status==="encerrada"?"good":"warn"}">${esc(mnt.finalizacao||"Em aberto")}</span></a>
+      ${mnts.length?`<div class="panel"><div class="ph"><h3>Manutenç${mnts.length>1?"ões vinculadas":"ão vinculada"}</h3></div><div class="list">
+        ${mnts.map(mnt=>`<a class="item" href="#/manutencoes/${mnt.id}"><div><div class="t">${esc(eqNome(mnt.equipamentoId))} — ${esc(mnt.servico||mnt.problema||"Registro de manutenção")}</div><div class="d">${esc(tecNome(mnt.tecnicoId))} · ${fmtDT(mnt.criadaEm)}</div></div><span class="sp"></span><span class="pill ${mnt.status==="encerrada"?"good":"warn"}">${esc(mnt.finalizacao||"Em aberto")}</span></a>`).join("")}
       </div></div>`:""}
     </div>
     <div class="card pad"><h3 style="margin-bottom:10px">OS (Bling)</h3>
@@ -1925,26 +1968,33 @@ function osDetalhe(v,id){
   </div>`;
   const vp=v.querySelector("#verpdf");
   if(vp)vp.onclick=e=>{e.preventDefault();try{const u=URL.createObjectURL(dataUrlParaBlob(getFotoLocal("ospdf_"+o.id)));window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),60000);}catch(err){toast("Não foi possível abrir o PDF.");}};
-  const eqSel=v.querySelector("#eq");
   const checkNs=()=>{
     const al=v.querySelector("#nseqalert");
-    if(eqSel&&!eqSel.value&&eqsCli.length===0)al.innerHTML='<div class="alertbox" style="margin-top:12px"><span>!</span><div>Equipamento ainda não cadastrado para este cliente. <a href="#/equipamentos/novo">Cadastrar NS</a>.</div></div>';
+    if(!selecionados.size&&eqsCli.length===0)al.innerHTML='<div class="alertbox" style="margin-top:12px"><span>!</span><div>Equipamento ainda não cadastrado para este cliente. <a href="#/equipamentos/novo">Cadastrar NS</a>.</div></div>';
     else al.innerHTML="";
   };
-  checkNs();eqSel&&(eqSel.onchange=checkNs);
+  checkNs();
+  v.querySelectorAll("[data-eq]").forEach(b=>b.onclick=()=>{
+    if(selecionados.has(b.dataset.eq))selecionados.delete(b.dataset.eq);else selecionados.add(b.dataset.eq);
+    b.classList.toggle("on");checkNs();
+  });
   v.querySelector("#savevinc")&&(v.querySelector("#savevinc").onclick=()=>{
-    o.equipamentoId=eqSel.value||null;o.tipoAtendimento=v.querySelector("#ta").value||null;o.situacaoCobranca=v.querySelector("#sc").value;
+    o.equipamentoIds=[...selecionados];delete o.equipamentoId;o.tipoAtendimento=v.querySelector("#ta").value||null;o.situacaoCobranca=v.querySelector("#sc").value;
     audit("Edição","OS",o.id,"vínculo técnico");persist();toast("Vínculo salvo.");router();
   });
   v.querySelector("#iniciar")&&(v.querySelector("#iniciar").onclick=()=>{
-    if(!eqSel.value)return toast("Selecione o equipamento/NS.");
+    if(!selecionados.size)return toast("Selecione ao menos um equipamento/NS.");
     if(!v.querySelector("#ta").value)return toast("Confirme o tipo de atendimento.");
     if(!j)return toast("Inicie a jornada primeiro.");
-    o.equipamentoId=eqSel.value;o.tipoAtendimento=v.querySelector("#ta").value;o.situacaoCobranca=v.querySelector("#sc").value;o.status="em_atendimento";
-    const m={id:uid("mnt"),criadaEm:nowISO(),osId:o.id,numeroBlingRef:o.numeroBling,clienteId:o.clienteId,equipamentoId:o.equipamentoId,tecnicoId:j.tecnicoId||VIEWER.userId,veiculoId:j.veiculoId,jornadaId:j.id,tipoAtendimento:o.tipoAtendimento,problema:o.descricao||"",diagnostico:"",servico:"",testes:{},medicoes:{},pecas:[],fotos:[],obs:"",finalizacao:"",proximaAcao:"nenhuma",proximaData:null,status:"aberta",horaInicio:nowISO()};
-    DB.manutencoes.unshift(m);
+    o.equipamentoIds=[...selecionados];delete o.equipamentoId;o.tipoAtendimento=v.querySelector("#ta").value;o.situacaoCobranca=v.querySelector("#sc").value;o.status="em_atendimento";
+    const jaAtendidos=new Set(mnts.map(m=>m.equipamentoId));
+    const novos=o.equipamentoIds.filter(eid=>!jaAtendidos.has(eid));
+    if(!novos.length){audit("Edição","OS",o.id,"vínculo técnico");persist();return toast("Esses equipamentos já têm atendimento aberto nesta OS.");}
+    const criadas=novos.map(eid=>({id:uid("mnt"),criadaEm:nowISO(),osId:o.id,numeroBlingRef:o.numeroBling,clienteId:o.clienteId,equipamentoId:eid,tecnicoId:j.tecnicoId||VIEWER.userId,veiculoId:j.veiculoId,jornadaId:j.id,tipoAtendimento:o.tipoAtendimento,problema:o.descricao||"",diagnostico:"",servico:"",testes:{},medicoes:{},pecas:[],fotos:[],obs:"",finalizacao:"",proximaAcao:"nenhuma",proximaData:null,status:"aberta",horaInicio:nowISO()}));
+    criadas.forEach(m=>DB.manutencoes.unshift(m));
     j.eventos=j.eventos||[];j.eventos.push({tipo:"atend_inicio",ts:nowISO(),ref:o.numeroBling});
-    audit("Criação","Manutenção",m.id,"OS "+o.numeroBling);persist();location.hash="#/manutencoes/"+m.id;
+    audit("Criação","Manutenção",criadas[0].id,"OS "+o.numeroBling+(criadas.length>1?" ("+criadas.length+" equipamentos)":""));persist();
+    if(criadas.length===1&&!mnts.length)location.hash="#/manutencoes/"+criadas[0].id;else{toast(criadas.length+" atendimento(s) iniciado(s).");location.hash="#/os/"+o.id;router();}
   });
   v.querySelector("#edos")&&(v.querySelector("#edos").onclick=()=>osForm(o));
   v.querySelector("#delos")&&(v.querySelector("#delos").onclick=()=>excluir("ordens",id,"Ordem de Serviço",()=>location.hash="#/os"));
@@ -2827,7 +2877,7 @@ ROUTES.relatorios=(v)=>{
       const c=s=>r.filter(o=>o.status===s).length;
       return{titulo:"Relatório de Ordens de Serviço",
         colunas:["Número (Bling)","Aberta em","Cliente","Equipamento","Tipo","Situação cobrança","Status"],
-        linhas:r.map(o=>[o.numeroBling,fmtDate(o.criadaEm),cliNome(o.clienteId),o.equipamentoId?eqNome(o.equipamentoId):"—",TIPOS_ATEND[o.tipoAtendimento]||"—",o.situacaoCobranca||"—",({aberta:"Aberta",em_atendimento:"Em atendimento",aguardando_peca:"Aguardando peça",aguardando_retorno:"Aguardando retorno",encerrada:"Encerrada"})[o.status]]),
+        linhas:r.map(o=>[o.numeroBling,fmtDate(o.criadaEm),cliNome(o.clienteId),osEquipTxt(o),TIPOS_ATEND[o.tipoAtendimento]||"—",o.situacaoCobranca||"—",({aberta:"Aberta",em_atendimento:"Em atendimento",aguardando_peca:"Aguardando peça",aguardando_retorno:"Aguardando retorno",encerrada:"Encerrada"})[o.status]]),
         totais:[{l:"Total",n:r.length},{l:"Abertas",n:c("aberta")},{l:"Aguardando peça",n:c("aguardando_peca")},{l:"Encerradas",n:c("encerrada")}]};
     },
     pecas(){
