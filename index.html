@@ -185,6 +185,20 @@ label.f .rq{color:var(--crit)}
 input,select,textarea{font:inherit;font-size:16px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);padding:11px 13px;width:100%;min-height:44px;transition:border-color .15s,box-shadow .15s}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--info);box-shadow:var(--focus-ring)}
 select{-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 49%,var(--ink-3) 50%),linear-gradient(-45deg,transparent 49%,var(--ink-3) 50%);background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%;background-size:5px 5px;background-repeat:no-repeat;padding-right:30px}
+/* campo de lista com busca (ver melhorarSelect) */
+.ss{position:relative;display:block;width:100%}
+.ss-native{display:none!important}
+.ss-in{-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 49%,var(--ink-3) 50%),linear-gradient(-45deg,transparent 49%,var(--ink-3) 50%);background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%;background-size:5px 5px;background-repeat:no-repeat;padding-right:30px;text-overflow:ellipsis;cursor:pointer}
+.ss-in:focus{cursor:text}
+.ss-in::placeholder{color:var(--ink-3);opacity:1}
+.ss-in:disabled{opacity:.6;cursor:not-allowed}
+.ss-list{position:fixed;z-index:110;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);box-shadow:var(--shadow);overflow-y:auto;overscroll-behavior:contain;padding:4px}
+.ss-opt{padding:10px 11px;border-radius:8px;font-size:14px;line-height:1.3;color:var(--ink);cursor:pointer}
+.ss-opt.vazio{color:var(--ink-3)}
+.ss-opt.sel{font-weight:700}
+.ss-opt.on{background:var(--accent-soft);color:var(--accent-deep)}
+.ss-opt.dis{opacity:.4;cursor:not-allowed}
+.ss-none{padding:12px;font-size:13px;color:var(--ink-3)}
 textarea{min-height:76px;resize:vertical;line-height:1.5}
 input[type=file]{padding:9px;font-size:13px}
 input[type=checkbox]{min-height:0}
@@ -1371,6 +1385,129 @@ function modal({title,body,footer,wide}){
 function closeModal(){$("#modalbg")?.remove();}
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
 
+/* ---------- listas com busca por digitação ----------
+   Transforma <select> longos (ou de cliente/equipamento/produto/veículo…) num campo
+   onde dá para digitar e filtrar. O <select> original continua no HTML (escondido) e
+   é ele que guarda o valor — todo o resto do app segue lendo/gravando .value normalmente. */
+const BUSCA_IDS=new Set(["ncli","clienteId","ocli","icli","oc","pbaixa","d_vei","d_jor","fcli","ftec","fvei","feq","fmnt","up"]);
+const RE_ACENTOS=new RegExp("["+String.fromCharCode(768)+"-"+String.fromCharCode(879)+"]","g"); // marcas de acento (sem depender de codificação)
+const semAcento=s=>String(s==null?"":s).normalize("NFD").replace(RE_ACENTOS,"").toLowerCase();
+/* busca das telas de lista: ignora acento e maiúscula; todas as palavras digitadas precisam aparecer */
+const casaBusca=(campos,q)=>{const t=semAcento(campos.join(" "));return semAcento(q).split(/\s+/).filter(Boolean).every(w=>t.includes(w));};
+let SS_ABERTO=null; // {fechar,inp} do campo que está com a lista aberta
+function melhorarSelect(sel){
+  if(sel.dataset.ss||sel.multiple||sel.hasAttribute("data-plain")||!sel.parentNode)return;
+  if(!(sel.options.length>6||BUSCA_IDS.has(sel.id)||sel.hasAttribute("data-busca")))return;
+  sel.dataset.ss="1";
+  const wrap=document.createElement("div");wrap.className="ss";
+  if(sel.getAttribute("style"))wrap.setAttribute("style",sel.getAttribute("style"));
+  const inp=document.createElement("input");
+  inp.type="text";inp.className="ss-in";inp.autocomplete="off";inp.spellcheck=false;
+  inp.setAttribute("role","combobox");inp.setAttribute("aria-expanded","false");inp.setAttribute("enterkeyhint","search");
+  wrap.appendChild(inp);
+  sel.parentNode.insertBefore(wrap,sel);   // antes do select: clicar no rótulo foca o campo
+  sel.classList.add("ss-native");
+  let lista=null,itens=[],ativoI=0,digitou=false;
+  const textoSel=()=>{const o=sel.options[sel.selectedIndex];return o&&o.value!==""?o.textContent.trim():"";};
+  const sync=()=>{
+    const o=sel.options[sel.selectedIndex];
+    inp.value=textoSel();
+    inp.placeholder=!o||o.value===""?(o?o.textContent.trim():""):"";
+    inp.disabled=sel.disabled;
+  };
+  const render=()=>{
+    const q=digitou?semAcento(inp.value).split(/\s+/).filter(Boolean):[];
+    const todos=[...sel.options].map((o,i)=>({i,texto:o.textContent.trim(),vazio:o.value==="",dis:o.disabled}));
+    itens=todos.filter(it=>!q.length||q.every(t=>semAcento(it.texto).includes(t)));
+    const total=itens.length;if(total>80)itens=itens.slice(0,80);
+    ativoI=q.length?itens.findIndex(it=>!it.dis):itens.findIndex(it=>it.i===sel.selectedIndex);
+    if(ativoI<0)ativoI=itens.findIndex(it=>!it.dis);
+    lista.innerHTML=(itens.map((it,k)=>`<div class="ss-opt${it.vazio?" vazio":""}${it.dis?" dis":""}${it.i===sel.selectedIndex?" sel":""}${k===ativoI?" on":""}" data-k="${k}">${esc(it.texto)||"&nbsp;"}</div>`).join("")
+      +(total>80?`<div class="ss-none">Mostrando 80 de ${total} — digite para refinar.</div>`:""))||'<div class="ss-none">Nada encontrado.</div>';
+    marcarAtivo();
+  };
+  const marcarAtivo=()=>{
+    if(!lista)return;
+    lista.querySelectorAll(".ss-opt").forEach((el,k)=>el.classList.toggle("on",k===ativoI));
+    const el=lista.querySelector(".ss-opt.on");if(el)el.scrollIntoView({block:"nearest"});
+  };
+  const posicionar=()=>{
+    if(!lista)return;
+    const r=inp.getBoundingClientRect(),vv=window.visualViewport;
+    const topVis=vv?vv.offsetTop:0,altVis=vv?vv.height:window.innerHeight;
+    const abaixo=topVis+altVis-r.bottom-8,acima=r.top-topVis-8;
+    lista.style.left=r.left+"px";lista.style.width=r.width+"px";
+    if(abaixo<170&&acima>abaixo){lista.style.top="auto";lista.style.bottom=(window.innerHeight-r.top+4)+"px";lista.style.maxHeight=Math.max(120,Math.min(280,acima))+"px";}
+    else{lista.style.bottom="auto";lista.style.top=(r.bottom+4)+"px";lista.style.maxHeight=Math.max(120,Math.min(280,abaixo))+"px";}
+  };
+  const fechar=()=>{
+    if(!lista)return;
+    lista.remove();lista=null;digitou=false;
+    inp.setAttribute("aria-expanded","false");
+    window.removeEventListener("scroll",posicionar,true);window.removeEventListener("resize",posicionar);
+    if(window.visualViewport)window.visualViewport.removeEventListener("resize",posicionar);
+    if(SS_ABERTO&&SS_ABERTO.inp===inp)SS_ABERTO=null;
+    sync();
+  };
+  const escolher=k=>{
+    const it=itens[k];if(!it||it.dis)return;
+    const mudou=sel.selectedIndex!==it.i;
+    sel.selectedIndex=it.i;
+    fechar();
+    if(mudou){sel.dispatchEvent(new Event("input",{bubbles:true}));sel.dispatchEvent(new Event("change",{bubbles:true}));}
+    if(window.matchMedia("(pointer:coarse)").matches)inp.blur();
+  };
+  const abrir=limpar=>{
+    if(inp.disabled||lista)return;
+    if(SS_ABERTO)SS_ABERTO.fechar();
+    if(limpar){inp.value="";digitou=false;}
+    inp.placeholder=textoSel()||inp.placeholder||"Selecionar…";
+    lista=document.createElement("div");lista.className="ss-list";lista.setAttribute("role","listbox");
+    lista.addEventListener("mousedown",e=>e.preventDefault());
+    lista.addEventListener("click",e=>{const el=e.target.closest(".ss-opt");if(el)escolher(+el.dataset.k);});
+    document.body.appendChild(lista);
+    inp.setAttribute("aria-expanded","true");
+    render();posicionar();
+    window.addEventListener("scroll",posicionar,true);window.addEventListener("resize",posicionar);
+    if(window.visualViewport)window.visualViewport.addEventListener("resize",posicionar);
+    SS_ABERTO={fechar,inp};
+  };
+  inp.addEventListener("focus",()=>abrir(true));
+  inp.addEventListener("click",()=>abrir(true));
+  inp.addEventListener("input",()=>{digitou=true;if(!lista)abrir(false);else{render();posicionar();}});
+  inp.addEventListener("blur",()=>{setTimeout(()=>{if(document.activeElement!==inp)fechar();},140);});
+  inp.addEventListener("keydown",e=>{
+    if(e.key==="Escape"&&lista){e.stopPropagation();fechar();return;}
+    if(e.key==="ArrowDown"||e.key==="ArrowUp"){
+      e.preventDefault();if(!lista){abrir(true);return;}
+      const d=e.key==="ArrowDown"?1:-1;let n=ativoI+d;
+      while(itens[n]&&itens[n].dis)n+=d;
+      if(n>=0&&n<itens.length){ativoI=n;marcarAtivo();}
+      return;
+    }
+    if(e.key==="Enter"&&lista){e.preventDefault();escolher(ativoI);}
+  });
+  /* mudanças feitas pelo código (sel.value=…, sel.innerHTML=…, sel.disabled=…) atualizam o campo */
+  for(const prop of ["value","selectedIndex"]){
+    const d=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,prop);
+    Object.defineProperty(sel,prop,{configurable:true,get(){return d.get.call(this);},set(v){d.set.call(this,v);sync();}});
+  }
+  new MutationObserver(sync).observe(sel,{childList:true,subtree:true,attributes:true,attributeFilter:["disabled"]});
+  sync();
+}
+(function iniciarBuscaSelects(){
+  const varrer=raiz=>{
+    if(!raiz||raiz.nodeType!==1)return;
+    if(raiz.tagName==="SELECT")melhorarSelect(raiz);
+    raiz.querySelectorAll("select:not([data-ss])").forEach(melhorarSelect);
+  };
+  new MutationObserver(ms=>{
+    for(const m of ms)m.addedNodes.forEach(varrer);
+    if(SS_ABERTO&&!document.body.contains(SS_ABERTO.inp))SS_ABERTO.fechar();
+  }).observe(document.body,{childList:true,subtree:true});
+  varrer(document.body);
+})();
+
 /* ---------- exclusão (soft delete + auditoria) ---------- */
 function excluir(arr,id,label,after){
   if(!can("excluir",arr)){toast(SO_ADMIN_EXCLUI.includes(arr)?"Somente o administrador pode excluir "+label.toLowerCase()+".":"Sem permissão para excluir.");return;}
@@ -1516,7 +1653,7 @@ ROUTES.clientes=(v,rest)=>{
   if(rest[0]==="novo")return clienteForm(v,null);
   let q="";
   const draw=()=>{
-    const list=DB.clientes.filter(ativo).filter(c=>!q||[c.razao,c.fantasia,c.doc,c.blingId,c.cidade].join(" ").toLowerCase().includes(q.toLowerCase()));
+    const list=DB.clientes.filter(ativo).filter(c=>!q||casaBusca([c.razao,c.fantasia,c.doc,c.blingId,c.cidade],q));
     v.querySelector("#clist").innerHTML=list.map(c=>{
       const eqs=DB.equipamentos.filter(e=>ativo(e)&&e.clienteId===c.id).length;
       const osAb=DB.ordens.filter(o=>ativo(o)&&o.clienteId===c.id&&o.status!=="encerrada").length;
@@ -1661,7 +1798,7 @@ ROUTES.equipamentos=(v,rest)=>{
   const draw=()=>{
     let list=DB.equipamentos.filter(ativo);
     if(fstatus)list=list.filter(e=>e.status===fstatus);
-    if(q)list=list.filter(e=>[e.ns,e.modelo,e.fabricante,cliNome(e.clienteId)].join(" ").toLowerCase().includes(q.toLowerCase()));
+    if(q)list=list.filter(e=>casaBusca([e.ns,e.modelo,e.fabricante,cliNome(e.clienteId)],q));
     v.querySelector("#elist").innerHTML=list.map(e=>`
       <a class="item" href="#/equipamentos/${e.id}"><span class="avatar">NS</span>
       <div><div class="t mono">${esc(e.ns)}</div><div class="d">${esc(e.modelo)} · ${esc(cliNome(e.clienteId))} · vínculo ${esc(e.vinculo)}</div></div>
@@ -1835,7 +1972,7 @@ ROUTES.os=(v,rest)=>{
     let list=DB.ordens.filter(ativo);
     if(f==="ativas")list=list.filter(o=>o.status==="aberta"||o.status==="em_atendimento");
     else if(f!=="todas")list=list.filter(o=>o.status===f);
-    if(q)list=list.filter(o=>[o.numeroBling,cliNome(o.clienteId),o.descricao].join(" ").toLowerCase().includes(q.toLowerCase()));
+    if(q)list=list.filter(o=>casaBusca([o.numeroBling,cliNome(o.clienteId),o.descricao],q));
     v.querySelector("#oslist").innerHTML=list.map(o=>`
       <a class="item" href="#/os/${o.id}"><span class="avatar">OS</span>
       <div><div class="t">${esc(o.numeroBling)} · ${esc(cliNome(o.clienteId))}</div><div class="d">${esc(o.descricao)} · ${esc(osEquipTxt(o))}</div></div>
@@ -2039,7 +2176,7 @@ ROUTES.manutencoes=(v,rest)=>{
   let vis="equipamento",q="";
   const draw=()=>{
     let list=DB.manutencoes.filter(ativo).sort((a,b)=>new Date(b.criadaEm)-new Date(a.criadaEm));
-    if(q)list=list.filter(m=>[eqNome(m.equipamentoId),cliNome(m.clienteId),m.numeroBlingRef,m.problema,m.servico].join(" ").toLowerCase().includes(q.toLowerCase()));
+    if(q)list=list.filter(m=>casaBusca([eqNome(m.equipamentoId),cliNome(m.clienteId),m.numeroBlingRef,m.problema,m.servico],q));
     v.querySelector("#mlist").innerHTML=list.map(m=>`
       <a class="item" href="#/manutencoes/${m.id}"><span class="avatar">${vis==="cliente"?esc(cliNome(m.clienteId)[0]):"NS"}</span>
       <div><div class="t">${vis==="cliente"?esc(cliNome(m.clienteId)):esc(eqNome(m.equipamentoId))}</div>
@@ -2300,7 +2437,7 @@ function addPecaModal(m,cb){
     footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="okpeca" disabled>Adicionar</button>`});
   let sel=null;
   const drawP=q=>{
-    const list=DB.produtos.filter(ativo).filter(p=>!q||[p.codigo,p.descricao,p.referencia,p.barras].join(" ").toLowerCase().includes(q.toLowerCase()));
+    const list=DB.produtos.filter(ativo).filter(p=>!q||casaBusca([p.codigo,p.descricao,p.referencia,p.barras],q));
     $("#plist").innerHTML=list.map(p=>`<button class="item" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-2)" data-p="${p.id}">
       <div><div class="t">${esc(p.descricao)}</div><div class="d mono">${esc(p.codigo)} · ref ${esc(p.referencia)} · barras ${esc(p.barras)}</div></div>
       <span class="sp"></span><span class="pill ${p.estoque<=p.minimo?"crit":"good"}">estoque ${p.estoque}</span></button>`).join("")||'<div class="emptyst small">Nada encontrado.</div>';
@@ -2480,17 +2617,25 @@ function jornadaDetalhe(v,id){
 ROUTES.veiculos=(v,rest)=>{
   if(rest[0]==="novo")return veicForm(v,null);
   if(rest[0])return veicDetalhe(v,rest[0]);
-  v.innerHTML=`<div class="pagehead between"><div><h1>Veículos</h1><p>Frota, preventivas por KM e/ou tempo, e alertas de vencimento.</p></div>
-    ${can("criar")?`<a class="btn primary" href="#/veiculos/novo">+ Veículo</a>`:""}</div>
-  <div class="stack">${DB.veiculos.filter(ativo).map(x=>{
-    const prevs=DB.preventivas.filter(p=>ativo(p)&&p.veiculoId===x.id);
-    const venc=prevs.filter(p=>preventivaStatus(p).venc).length;
-    const prox=prevs.filter(p=>!preventivaStatus(p).venc&&preventivaStatus(p).prox).length;
-    return `<a class="card pad" href="#/veiculos/${x.id}" style="text-decoration:none;color:inherit">
+  let q="";
+  const draw=()=>{
+    const list=DB.veiculos.filter(ativo).filter(x=>!q||casaBusca([x.placa,x.marcaModelo,x.motorista,x.cor,x.situacao],q));
+    v.querySelector("#vlist").innerHTML=list.map(x=>{
+      const prevs=DB.preventivas.filter(p=>ativo(p)&&p.veiculoId===x.id);
+      const venc=prevs.filter(p=>preventivaStatus(p).venc).length;
+      const prox=prevs.filter(p=>!preventivaStatus(p).venc&&preventivaStatus(p).prox).length;
+      return `<a class="card pad" href="#/veiculos/${x.id}" style="text-decoration:none;color:inherit">
       <div class="between"><div><h3 class="mono">${esc(x.placa)}</h3><div class="small muted">${esc(x.marcaModelo)} · ${x.ano} · ${esc(x.cor)}</div></div>
       <div class="chips">${venc?`<span class="pill crit">${venc} vencida(s)</span>`:""}${prox?`<span class="pill warn">${prox} próxima(s)</span>`:""}${!venc&&!prox?'<span class="pill good">preventivas em dia</span>':""}</div></div>
       <dl class="kv" style="margin-top:10px"><dt>KM atual</dt><dd class="tnum">${km(x.kmAtual)}</dd><dt>Combustível</dt><dd>${esc(x.combustivel)}</dd><dt>Motorista</dt><dd>${esc(x.motorista||"—")}</dd><dt>Situação</dt><dd>${esc(x.situacao)}</dd></dl>
-    </a>`;}).join("")}</div>`;
+    </a>`;}).join("")||'<div class="emptyst">Nenhum veículo encontrado.</div>';
+  };
+  v.innerHTML=`<div class="pagehead between"><div><h1>Veículos</h1><p>Frota, preventivas por KM e/ou tempo, e alertas de vencimento.</p></div>
+    ${can("criar")?`<a class="btn primary" href="#/veiculos/novo">+ Veículo</a>`:""}</div>
+  <div class="searchbar" style="margin-bottom:12px"><span class="ic">⌕</span><input id="vq" placeholder="Buscar por placa, modelo ou motorista…"></div>
+  <div class="stack" id="vlist"></div>`;
+  v.querySelector("#vq").oninput=e=>{q=e.target.value;draw();};
+  draw();
 };
 function veicDetalhe(v,id){
   const x=byId("veiculos",id);if(!x||!ativo(x))return v.innerHTML='<div class="alertbox crit">Veículo não encontrado.</div>';
@@ -2602,7 +2747,7 @@ function produtoModal(p){
 ROUTES.estoque=(v)=>{
   let q="";
   const draw=()=>{
-    const list=DB.produtos.filter(ativo).filter(p=>!q||[p.codigo,p.descricao,p.referencia,p.barras].join(" ").toLowerCase().includes(q.toLowerCase()));
+    const list=DB.produtos.filter(ativo).filter(p=>!q||casaBusca([p.codigo,p.descricao,p.referencia,p.barras],q));
     v.querySelector("#prodBody").innerHTML=list.map(p=>`<tr>
       <td><div style="font-weight:600">${esc(p.descricao)}</div><div class="small muted mono">${esc(p.codigo||"—")} · ${esc(p.referencia||"")} · ${esc(p.barras||"")}</div></td>
       <td class="tnum">${p.estoque}</td><td class="tnum">${p.minimo}</td><td class="tnum">${money(p.custo)}</td>
@@ -2701,10 +2846,11 @@ function despesaModal(d){
 }
 const abastecimentoModal=despesaModal;
 ROUTES.despesas=(v)=>{
-  let f="todas";
+  let f="todas",q="";
   const draw=()=>{
     let list=DB.abastecimentos.filter(ativo).sort((a,b)=>new Date(b.dataHora||b.criadoEm)-new Date(a.dataHora||a.criadoEm));
     if(f!=="todas")list=list.filter(a=>(a.categoria||"combustivel")===f);
+    if(q)list=list.filter(a=>casaBusca([a.descricao,a.posto,a.docFiscal,catDespNome(a.categoria||"combustivel"),byId("veiculos",a.veiculoId)?.placa],q));
     const tot=list.reduce((s,a)=>s+(+a.valorTotal||0),0);
     v.querySelector("#dtot").textContent=money(tot);
     v.querySelector("#dlist").innerHTML=list.map(a=>{
@@ -2722,11 +2868,13 @@ ROUTES.despesas=(v)=>{
   };
   v.innerHTML=`<div class="pagehead between"><div><h1>Gastos &amp; despesas</h1><p>Combustível, alimentação, pedágio, estacionamento e outros custos de campo — vinculados ao veículo e à jornada.</p></div>
     ${can("criar")?`<button class="btn primary" id="addDesp">+ Nova despesa</button>`:""}</div>
+  <div class="searchbar" style="margin-bottom:12px"><span class="ic">⌕</span><input id="dsearch" placeholder="Buscar por descrição, posto, placa ou nota…"></div>
   <div class="chips" style="margin-bottom:12px">
     <button class="chip on" data-f="todas">Todas</button>${Object.entries(CAT_DESPESA).map(([k,x])=>`<button class="chip" data-f="${k}">${x.nome}</button>`).join("")}
   </div>
   <div class="card pad" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center"><span class="muted small">Total no filtro</span><b class="tnum" id="dtot" style="font-size:19px"></b></div>
   <div class="panel"><div class="list" id="dlist"></div></div>`;
+  v.querySelector("#dsearch").oninput=e=>{q=e.target.value;draw();};
   v.querySelector("#addDesp")&&(v.querySelector("#addDesp").onclick=()=>despesaModal(null));
   v.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{v.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));c.classList.add("on");f=c.dataset.f;draw();});
   draw();
@@ -3407,9 +3555,8 @@ ROUTES.auditoria=(v)=>{
   v.innerHTML=`<div class="pagehead"><h1>Auditoria</h1><p>Toda exclusão administrativa registra usuário, data/hora e motivo. Preferência por exclusão lógica em vez de apagar históricos.</p></div>
   <div class="detailgrid two">
     <div class="panel"><div class="ph"><h3>Trilha de auditoria</h3><span class="small muted">${DB.auditoria.length} evento(s)</span></div>
-      <div class="tblwrap" style="max-height:520px;overflow:auto"><table class="tbl"><thead><tr><th>Quando</th><th>Usuário</th><th>Ação</th><th>Entidade</th><th>Detalhe</th></tr></thead><tbody>
-      ${DB.auditoria.slice(0,200).map(a=>`<tr><td class="small mono">${fmtDT(a.ts)}</td><td class="small">${esc(a.usuario)}</td><td><span class="pill ${a.acao==="Exclusão"?"crit":a.acao==="Encerramento"?"good":""}">${esc(a.acao)}</span></td><td class="small">${esc(a.entidade)}</td><td class="small muted">${esc(a.detalhe||"")}</td></tr>`).join("")||'<tr><td colspan="5" class="muted">Sem eventos ainda.</td></tr>'}
-      </tbody></table></div>
+      <div style="padding:10px 14px 0"><div class="searchbar"><span class="ic">⌕</span><input id="audq" placeholder="Buscar por usuário, ação ou detalhe…"></div></div>
+      <div class="tblwrap" style="max-height:520px;overflow:auto"><table class="tbl"><thead><tr><th>Quando</th><th>Usuário</th><th>Ação</th><th>Entidade</th><th>Detalhe</th></tr></thead><tbody id="audtb"></tbody></table></div>
     </div>
     <div class="panel"><div class="ph"><h3>Registros excluídos (soft delete)</h3></div>
       <div class="list">${excl.map(({a,x})=>`<div class="item"><div><div class="t">${esc(x.razao||x.ns||x.placa||x.nome||x.numeroBling||x.descricao||x.produtoNome||x.servico||x.problema||(x.criadaEm?"Jornada "+fmtDate(x.criadaEm):"")||x.id)}</div>
@@ -3419,6 +3566,12 @@ ROUTES.auditoria=(v)=>{
       </div>
     </div>
   </div>`;
+  const desenharAud=q=>{
+    const lin=DB.auditoria.filter(a=>!q||casaBusca([a.usuario,a.acao,a.entidade,a.detalhe],q)).slice(0,200);
+    v.querySelector("#audtb").innerHTML=lin.map(a=>`<tr><td class="small mono">${fmtDT(a.ts)}</td><td class="small">${esc(a.usuario)}</td><td><span class="pill ${a.acao==="Exclusão"?"crit":a.acao==="Encerramento"?"good":""}">${esc(a.acao)}</span></td><td class="small">${esc(a.entidade)}</td><td class="small muted">${esc(a.detalhe||"")}</td></tr>`).join("")||'<tr><td colspan="5" class="muted">Nenhum evento encontrado.</td></tr>';
+  };
+  desenharAud("");
+  v.querySelector("#audq").oninput=e=>desenharAud(e.target.value);
   v.querySelectorAll("[data-restore]").forEach(b=>b.onclick=()=>{
     const [a,id]=b.dataset.restore.split(":");const x=byId(a,id);delete x.excluido;audit("Restauração",a,id);persist();toast("Registro restaurado.");router();
   });
