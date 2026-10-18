@@ -234,12 +234,12 @@ const MAX_PAG_CONTATOS = 60; // 60 páginas x 100 = até 6.000 contatos por sinc
 // Fornecedores NÃO são clientes. No Bling um contato pode ter vários tipos (Cliente, Fornecedor...):
 // só tratamos como fornecedor quem é "Fornecedor" e NÃO é também "Cliente". Se qualquer passo falhar
 // (tipo não encontrado, erro de rede, limite de chamadas), devolve null e nada é filtrado nessa rodada.
-async function listaEstrita(path: string, headers: Record<string, string>, extra: Record<string, string>) {
+async function listaEstrita(path: string, headers: Record<string, string>, extra: Record<string, string>, why: string[]) {
   const out: any[] = [];
   for (let pagina = 1; pagina <= MAX_PAG_CONTATOS; pagina++) {
     const qs = new URLSearchParams({ pagina: String(pagina), limite: "100", ...extra });
     const r = await blingFetch(`${API}${path}?${qs}`, headers);
-    if (!r.ok) { console.error("lista estrita erro", path, r.status); return null; }
+    if (!r.ok) { console.error("lista estrita erro", path, r.status); why.push(`consulta de contatos por tipo falhou (erro ${r.status})`); return null; }
     const page = (await r.json().catch(() => ({ data: [] }))).data || [];
     out.push(...page);
     if (page.length < 100) break;
@@ -249,29 +249,29 @@ async function listaEstrita(path: string, headers: Record<string, string>, extra
 }
 const semAcento = (s: unknown) => String(s ?? "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
 
-async function fornecedoresPuros(headers: Record<string, string>): Promise<Set<string> | null> {
+async function fornecedoresPuros(headers: Record<string, string>, why: string[]): Promise<Set<string> | null> {
   const rt = await blingFetch(`${API}/contatos/tipos`, headers);
-  if (!rt.ok) { console.error("tipos de contato erro", rt.status); return null; }
+  if (!rt.ok) { console.error("tipos de contato erro", rt.status); why.push(`consulta de tipos de contato falhou (erro ${rt.status})`); return null; }
   const tipos: any[] = (await rt.json().catch(() => ({ data: [] }))).data || [];
   const forn = tipos.find((t) => semAcento(t.descricao).startsWith("fornecedor"));
   const cli = tipos.find((t) => semAcento(t.descricao) === "cliente");
-  if (!forn || !cli) return null;
-  const fs = await listaEstrita("/contatos", headers, { criterio: "1", idTipoContato: String(forn.id) });
-  if (!fs || !fs.length) return null;
-  const cs = await listaEstrita("/contatos", headers, { criterio: "1", idTipoContato: String(cli.id) });
-  if (!cs || !cs.length) return null; // sem a lista de clientes não dá para separar os que são os dois
+  if (!forn || !cli) { why.push("tipos do Bling: " + tipos.map((t) => t.descricao).join(", ") + " (não achei Fornecedor e Cliente)"); return null; }
+  const fs = await listaEstrita("/contatos", headers, { criterio: "1", idTipoContato: String(forn.id) }, why);
+  if (!fs || !fs.length) { if (fs) why.push("o Bling não devolveu nenhum contato do tipo Fornecedor"); return null; }
+  const cs = await listaEstrita("/contatos", headers, { criterio: "1", idTipoContato: String(cli.id) }, why);
+  if (!cs || !cs.length) { if (cs) why.push("o Bling não devolveu nenhum contato do tipo Cliente"); return null; } // sem a lista de clientes não dá para separar os que são os dois
   const clientes = new Set(cs.map((x: any) => String(x.id)));
   return new Set(fs.map((x: any) => String(x.id)).filter((id: string) => !clientes.has(id)));
 }
 
 // Clientes que já têm OS ou equipamento no Assist nunca são ocultados (null = não deu para conferir).
-async function clientesEmUso(empresaId: string): Promise<Set<string> | null> {
+async function clientesEmUso(empresaId: string, why: string[]): Promise<Set<string> | null> {
   const s = new Set<string>();
   for (const tabela of ["ordens", "equipamentos"]) {
     for (let de = 0; ; de += 1000) {
       const { data, error } = await admin.from(tabela).select("cid:dados->>clienteId")
         .eq("empresa_id", empresaId).order("id").range(de, de + 999);
-      if (error) { console.error("em uso", tabela, error); return null; }
+      if (error) { console.error("em uso", tabela, error); why.push(`não consegui conferir OS/equipamentos (${error.message})`); return null; }
       for (const r of (data || []) as any[]) if (r.cid) s.add(String(r.cid));
       if (!data || data.length < 1000) break;
     }
@@ -280,11 +280,12 @@ async function clientesEmUso(empresaId: string): Promise<Set<string> | null> {
 }
 
 async function syncContatos(empresaId: string, headers: Record<string, string>) {
+  const why: string[] = [];
   const [itens, existentes, forn, emUso] = await Promise.all([
     blingList("/contatos", headers, { criterio: "1" }, MAX_PAG_CONTATOS),
     carregarExistentes("clientes", empresaId, "bling-cli-"),
-    fornecedoresPuros(headers),
-    clientesEmUso(empresaId),
+    fornecedoresPuros(headers, why),
+    clientesEmUso(empresaId, why),
   ]);
   const filtrar = !!forn && !!emUso;
   let ocultos = 0;
@@ -322,7 +323,7 @@ async function syncContatos(empresaId: string, headers: Record<string, string>) 
   // ids de todos os clientes que já existem (antes + agora): syncOrdens usa para saber quem falta
   const ids = new Set<string>([...existentes.keys(), ...rows.map((r: any) => r.id)]);
   return {
-    n: rows.length, alterados: mudadas.length, ids, autoExcluidos, ocultos, filtrou: filtrar,
+    n: rows.length, alterados: mudadas.length, ids, autoExcluidos, ocultos, filtrou: filtrar, motivoSemFiltro: why.join("; "),
     truncado: itens.length >= MAX_PAG_CONTATOS * 100,
   };
 }
@@ -388,7 +389,7 @@ async function sincronizarEmpresa(empresaId: string) {
       bling_ultima_sync: new Date().toISOString(),
       bling_ultimo_erro: clientes.truncado
         ? `Aviso: o Bling tem mais de ${MAX_PAG_CONTATOS * 100} contatos; só os primeiros foram importados (clientes das OS são criados mesmo assim).`
-        : null,
+        : (clientes.filtrou ? null : `Aviso: fornecedores não filtrados nesta rodada — ${clientes.motivoSemFiltro || "motivo desconhecido"}.`),
     }).eq("id", empresaId);
     return {
       ok: true, os: ordens.n, clientes: clientes.n, produtos: produtos.n, equipamentos: ordens.equip,
