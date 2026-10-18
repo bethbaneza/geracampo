@@ -3191,6 +3191,7 @@ const REL_DEFS={
   preventivas:{nome:"Preventivas de veículos",desc:"Vencimento das preventivas da frota.",filtros:["veiculo"]},
   atendimento:{nome:"Relatório de atendimento",desc:"Laudo de uma visita — sem custos, pronto para entregar.",filtros:["cliente","manutencao"],publico:"cliente"},
   prontuario:{nome:"Prontuário do equipamento",desc:"Histórico técnico completo de um equipamento.",filtros:["equipamento","periodo"],publico:"cliente"},
+  cadastro:{nome:"Cadastro de clientes",desc:"Lista de todos os cadastros, com uso (equipamentos/OS) e excluídos — ideal para conferir.",filtros:["cadastro"]},
   cliente:{nome:"Histórico do cliente",desc:"Tudo o que foi feito para um cliente no período.",filtros:["cliente","periodo"],publico:"cliente"}
 };
 ROUTES.relatorios=(v)=>{
@@ -3199,7 +3200,8 @@ ROUTES.relatorios=(v)=>{
     tipo:"manutencoes",
     de:new Date(hoje.getFullYear(),0,1).toISOString().slice(0,10),
     ate:hoje.toISOString().slice(0,10),
-    cliente:"",tecnico:"",tipoAtend:"",fin:"",statusOS:"",veiculo:"",equip:"",manut:""
+    cliente:"",tecnico:"",tipoAtend:"",fin:"",statusOS:"",veiculo:"",equip:"",manut:"",
+    cadSit:"ativos",cadUso:"todos",cadOrigem:"",cadBusca:""
   };
   let ultimo=null;
 
@@ -3331,6 +3333,25 @@ ROUTES.relatorios=(v)=>{
         linhas:h.map(m=>[fmtDate(m.criadaEm),byId("equipamentos",m.equipamentoId)?.ns||"—",m.numeroBlingRef||"—",TIPOS_ATEND[m.tipoAtendimento]||"—",m.servico||m.problema||"—",m.finalizacao||"—"]),
         assinar:false,
         totais:[{l:"Manutenções",n:h.length},{l:"Equipamentos",n:eqs.length},{l:"OS no período",n:new Set(h.map(m=>m.numeroBlingRef)).size}]};
+    },
+    cadastro(){
+      // lista dos cadastros de clientes (inclusive os excluídos) — serve para achar fornecedores e duplicados no meio
+      const conta=(arr)=>{const m={};arr.filter(ativo).forEach(x=>{if(x.clienteId)m[x.clienteId]=(m[x.clienteId]||0)+1;});return m;};
+      const nEq=conta(DB.equipamentos),nOS=conta(DB.ordens),nMn=conta(DB.manutencoes);
+      let r=DB.clientes.map(c=>({c,eq:nEq[c.id]||0,os:(nOS[c.id]||0)+(nMn[c.id]||0)}));
+      if(st.cadSit==="ativos")r=r.filter(x=>ativo(x.c));
+      else if(st.cadSit==="excluidos")r=r.filter(x=>!ativo(x.c));
+      if(st.cadUso==="sem")r=r.filter(x=>!x.eq&&!x.os);
+      else if(st.cadUso==="com")r=r.filter(x=>x.eq||x.os);
+      if(st.cadOrigem)r=r.filter(x=>(x.c.origem==="bling"?"bling":"manual")===st.cadOrigem);
+      if(st.cadBusca)r=r.filter(x=>casaBusca([x.c.razao,x.c.fantasia,x.c.doc,x.c.cidade,x.c.email],st.cadBusca));
+      r.sort(porNome(x=>x.c.razao||x.c.fantasia));
+      const sit=x=>ativo(x.c)?"Ativo":"Excluído"+(x.c.excluido.motivo?" ("+x.c.excluido.motivo+")":"");
+      return{titulo:"Cadastro de clientes",
+        subtitulo:filtrosTxt(),
+        colunas:["Razão social / nome","Fantasia","CPF/CNPJ","Cidade","Telefone","E-mail","Origem","Equip.","OS / visitas","Situação"],
+        linhas:r.map(x=>[x.c.razao||"—",x.c.fantasia&&x.c.fantasia!==x.c.razao?x.c.fantasia:"",x.c.doc||"—",x.c.cidade||"—",x.c.tel||"—",x.c.email||"—",x.c.origem==="bling"?"Bling":"Manual",x.eq,x.os,sit(x)]),
+        totais:[{l:"Cadastros",n:r.length},{l:"Sem equipamento nem OS",n:r.filter(x=>!x.eq&&!x.os).length},{l:"Com equipamento ou OS",n:r.filter(x=>x.eq||x.os).length},{l:"Excluídos",n:r.filter(x=>!ativo(x.c)).length}]};
     }
   };
 
@@ -3342,6 +3363,12 @@ ROUTES.relatorios=(v)=>{
     if(st.tipoAtend)p.push("Tipo: "+TIPOS_ATEND[st.tipoAtend]);
     if(st.fin)p.push("Finalização: "+st.fin);
     if(st.veiculo)p.push("Veículo: "+(byId("veiculos",st.veiculo)?.placa||""));
+    if(st.tipo==="cadastro"){
+      p.push({ativos:"Somente ativos",excluidos:"Somente excluídos",todos:"Ativos e excluídos"}[st.cadSit]);
+      if(st.cadUso==="sem")p.push("Sem equipamento nem OS");else if(st.cadUso==="com")p.push("Com equipamento ou OS");
+      if(st.cadOrigem)p.push("Origem: "+(st.cadOrigem==="bling"?"Bling":"Manual"));
+      if(st.cadBusca)p.push("Busca: "+st.cadBusca);
+    }
     return p.join(" · ")||"Sem filtros adicionais";
   }
   function csvText(r){
@@ -3362,6 +3389,11 @@ ROUTES.relatorios=(v)=>{
     if(f.includes("statusOS"))parts.push(selField("fsos","Status da OS",[["","Todos"],["aberta","Aberta"],["em_atendimento","Em atendimento"],["aguardando_peca","Aguardando peça"],["aguardando_retorno","Aguardando retorno"],["encerrada","Encerrada"]],st.statusOS));
     if(f.includes("veiculo"))parts.push(selField("fvei","Veículo",[["","Todos"],...DB.veiculos.filter(ativo).map(x=>[x.id,x.placa+" · "+x.marcaModelo])],st.veiculo));
     if(f.includes("equipamento"))parts.push(selField("feq","Equipamento / NS",[["","Selecione…"],...DB.equipamentos.filter(ativo).map(e=>[e.id,e.ns+" · "+e.modelo])],st.equip));
+    if(f.includes("cadastro"))parts.push(
+      selField("fcsit","Situação do cadastro",[["ativos","Somente ativos"],["excluidos","Somente excluídos"],["todos","Ativos e excluídos"]],st.cadSit),
+      selField("fcuso","Uso no Assist",[["todos","Todos"],["sem","Sem equipamento nem OS"],["com","Com equipamento ou OS"]],st.cadUso),
+      selField("fcori","Origem",[["","Todas"],["bling","Bling"],["manual","Cadastrado no Assist"]],st.cadOrigem),
+      `<label class="f">Buscar (nome, CNPJ, cidade…)<input id="fcbus" value="${esc(st.cadBusca)}" placeholder="Opcional"></label>`);
     if(f.includes("manutencao")){
       let ms=DB.manutencoes.filter(ativo);
       if(st.cliente)ms=ms.filter(m=>m.clienteId===st.cliente);
@@ -3382,6 +3414,10 @@ ROUTES.relatorios=(v)=>{
     if(g("fvei"))st.veiculo=g("fvei").value;
     if(g("feq"))st.equip=g("feq").value;
     if(g("fmnt"))st.manut=g("fmnt").value;
+    if(g("fcsit"))st.cadSit=g("fcsit").value;
+    if(g("fcuso"))st.cadUso=g("fcuso").value;
+    if(g("fcori"))st.cadOrigem=g("fcori").value;
+    if(g("fcbus"))st.cadBusca=g("fcbus").value.trim();
   }
   function empresaCab(){
     const c=CFG();
