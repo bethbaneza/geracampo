@@ -874,10 +874,22 @@ function carregarSnap(){
   snap.__cfg=JSON.stringify(CFG());
 }
 let EMPRESA=null;
+/* O Supabase entrega no máximo 1.000 linhas por consulta; com milhares de clientes/produtos do Bling
+   uma consulta só cortava o resto (e as OS ficavam sem nome de cliente). Busca em blocos até acabar. */
+async function buscarTudo(tabela){
+  const todas=[];
+  for(let de=0;;de+=1000){
+    const{data,error}=await supa.from(tabela).select("*").order("id").range(de,de+999);
+    if(error)return{data:null,error};
+    todas.push(...(data||[]));
+    if(!data||data.length<1000)break;
+  }
+  return{data:todas,error:null};
+}
 async function carregarTudo(){
   const nomes=COLS_DADOS.map(c=>TAB[c]);
   const res=await Promise.all([
-    ...nomes.map(t=>supa.from(t).select("*")),
+    ...nomes.map(buscarTudo),
     supa.from("config_empresa").select("dados").maybeSingle(),
     supa.from("perfis").select("id,nome,papel,ativo"),
     supa.from("auditoria").select("*").order("ts",{ascending:false}).limit(300),
