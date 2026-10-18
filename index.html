@@ -199,6 +199,13 @@ select{-webkit-appearance:none;appearance:none;background-image:linear-gradient(
 .ss-opt.on{background:var(--accent-soft);color:var(--accent-deep)}
 .ss-opt.dis{opacity:.4;cursor:not-allowed}
 .ss-none{padding:12px;font-size:13px;color:var(--ink-3)}
+/* gráfico de colunas (Painel) */
+.colchart{display:flex;align-items:flex-end;gap:10px;height:176px;padding:0 4px;border-bottom:1px solid var(--line);background-image:linear-gradient(var(--line-2) 1px,transparent 1px);background-size:100% 25%}
+.colchart .col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end}
+.colchart .val{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:5px;font-variant-numeric:tabular-nums}
+.colchart .bar{width:100%;max-width:64px;border-radius:8px 8px 0 0}
+.collabels{display:flex;gap:10px;padding:8px 4px 0}
+.collabels span{flex:1;min-width:0;text-align:center;font-size:11.5px;font-weight:600;line-height:1.25;color:var(--ink-3)}
 textarea{min-height:76px;resize:vertical;line-height:1.5}
 input[type=file]{padding:9px;font-size:13px}
 input[type=checkbox]{min-height:0}
@@ -1094,7 +1101,8 @@ function ind(){
   const osAbertas=DB.ordens.filter(o=>ativo(o)&&o.status==="aberta");
   const osPeca=DB.ordens.filter(o=>ativo(o)&&o.status==="aguardando_peca");
   const osRetorno=DB.ordens.filter(o=>ativo(o)&&o.status==="aguardando_retorno");
-  const estCrit=DB.produtos.filter(p=>ativo(p)&&p.estoque<=p.minimo);
+  /* só conta como crítico quem tem estoque mínimo definido (produtos do Bling vêm com mínimo 0 e não são alerta) */
+  const estCrit=DB.produtos.filter(p=>ativo(p)&&p.minimo>0&&p.estoque<=p.minimo);
   const solPend=DB.solicitacoesPeca.filter(s=>ativo(s)&&s.status==="pendente");
   const prevVenc=DB.preventivas.filter(p=>ativo(p)&&preventivaStatus(p).venc);
   const prevProx=DB.preventivas.filter(p=>ativo(p)&&!preventivaStatus(p).venc&&preventivaStatus(p).prox);
@@ -1616,6 +1624,20 @@ ROUTES.assinar=(v)=>{
 };
 
 /* ============ PAINEL ============ */
+/* gráfico de colunas: OS do mês corrente por status (data de abertura da OS) */
+const STATUS_OS_GRAF=[["aberta","Abertas","#e0a24a"],["em_atendimento","Em atendimento","#0090f8"],["aguardando_peca","Aguardando peça","#e8756b"],["aguardando_retorno","Aguardando retorno","#8a97a8"],["encerrada","Encerradas","#00c868"]];
+function graficoOSMes(){
+  const hoje=new Date();
+  const doMes=DB.ordens.filter(o=>{if(!ativo(o))return false;const d=new Date(o.criadaEm);return d.getMonth()===hoje.getMonth()&&d.getFullYear()===hoje.getFullYear();});
+  const cont=STATUS_OS_GRAF.map(([k,nome,cor])=>({nome,cor,n:doMes.filter(o=>o.status===k).length}));
+  const max=Math.max(1,...cont.map(c=>c.n));
+  const mes=hoje.toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+  return `<div class="panel" style="margin-bottom:20px"><div class="ph"><h3>OS do mês por status</h3><span class="small muted">${esc(mes)} · ${doMes.length} OS</span></div>
+    <div style="padding:14px 18px 16px">${doMes.length?`
+      <div class="colchart" role="img" aria-label="${esc("OS do mês por status: "+cont.map(c=>c.nome+" "+c.n).join(", "))}">${cont.map(c=>`<div class="col"><span class="val">${c.n}</span><div class="bar" style="height:${c.n?Math.max(4,Math.round(c.n/max*128)):0}px;background:${c.cor}"></div></div>`).join("")}</div>
+      <div class="collabels">${cont.map(c=>`<span>${esc(c.nome)}</span>`).join("")}</div>`
+      :'<div class="emptyst small">Nenhuma OS aberta neste mês.</div>'}</div></div>`;
+}
 ROUTES.painel=v=>{
   const i=ind();const j=jornadaAberta();
   v.innerHTML=`
@@ -1629,11 +1651,11 @@ ROUTES.painel=v=>{
     <div class="kpi"><div class="lab">Manutenções no mês</div><div class="val tnum">${i.mntMes.length}</div><div class="sub">registros técnicos</div></div>
     <a class="kpi ${i.osAbertas.length?"warn":""}" href="#/os" style="text-decoration:none;color:inherit"><div class="lab">OS abertas</div><div class="val tnum">${i.osAbertas.length}</div><div class="sub">aguardando vínculo/atendimento</div></a>
     <a class="kpi ${i.osPeca.length?"crit":""}" href="#/os" style="text-decoration:none;color:inherit"><div class="lab">Aguardando peça</div><div class="val tnum">${i.osPeca.length}</div><div class="sub">OS pendentes</div></a>
-    <a class="kpi ${i.estCrit.length?"crit":"good"}" href="#/estoque" style="text-decoration:none;color:inherit"><div class="lab">Estoque crítico</div><div class="val tnum">${i.estCrit.length}</div><div class="sub">itens no/abaixo do mínimo</div></a>
     <a class="kpi ${i.solPend.length?"warn":""}" href="#/estoque" style="text-decoration:none;color:inherit"><div class="lab">Solicitações de peça</div><div class="val tnum">${i.solPend.length}</div><div class="sub">pendentes</div></a>
     <a class="kpi ${i.prevVenc.length?"crit":i.prevProx.length?"warn":"good"}" href="#/veiculos" style="text-decoration:none;color:inherit"><div class="lab">Preventivas vencidas</div><div class="val tnum">${i.prevVenc.length}</div><div class="sub">${i.prevProx.length} próxima(s) do vencimento</div></a>
     <a class="kpi ${i.visitasVenc.length?"crit":i.visitasProx.length?"warn":"good"}" href="${i.visitasVenc.length+i.visitasProx.length===1?"#/clientes/"+(i.visitasVenc[0]||i.visitasProx[0]).id:"#/clientes"}" style="text-decoration:none;color:inherit"><div class="lab">Visitas técnicas</div><div class="val tnum">${i.visitasVenc.length}</div><div class="sub">${i.visitasProx.length} nos próximos 7 dias</div></a>
   </div>
+  ${graficoOSMes()}
   <div class="detailgrid two">
     <div class="panel">
       <div class="ph"><h3>Ordens de Serviço recentes</h3><a class="btn ghost sm" href="#/os">Ver todas</a></div>
@@ -1646,16 +1668,15 @@ ROUTES.painel=v=>{
     </div>
     <div class="stack">
       <div class="panel">
-        <div class="ph"><h3>Alertas</h3></div>
+        <div class="ph"><h3>Alertas</h3><button type="button" class="btn sm" id="verEstCrit">Estoque crítico</button></div>
         <div class="list">
-          ${i.estCrit.map(p=>`<div class="item"><span class="dot" style="color:var(--crit)"></span><div><div class="t">${esc(p.descricao)}</div><div class="d">Estoque ${p.estoque} · mínimo ${p.minimo}</div></div></div>`).join("")}
           ${i.prevVenc.map(p=>`<div class="item"><span class="dot" style="color:var(--crit)"></span><div><div class="t">${esc(p.tipo)} · ${esc(byId("veiculos",p.veiculoId)?.placa)}</div><div class="d">Preventiva vencida</div></div></div>`).join("")}
           ${i.osPeca.map(o=>`<div class="item"><span class="dot" style="color:var(--warn)"></span><div><div class="t">${esc(o.numeroBling)}</div><div class="d">OS aguardando peça</div></div></div>`).join("")}
           ${i.visitasVenc.map(c=>`<a class="item" href="#/clientes/${c.id}"><span class="dot" style="color:var(--crit)"></span><div><div class="t">${esc(c.fantasia||c.razao)}</div><div class="d">Visita técnica atrasada · ${fmtDate(c.visitaProxima)}</div></div></a>`).join("")}
           ${i.visitasProx.map(c=>`<a class="item" href="#/clientes/${c.id}"><span class="dot" style="color:var(--warn)"></span><div><div class="t">${esc(c.fantasia||c.razao)}</div><div class="d">Visita técnica em breve · ${fmtDate(c.visitaProxima)}</div></div></a>`).join("")}
           ${i.acoesVenc.map(m=>`<a class="item" href="#/manutencoes/${m.id}"><span class="dot" style="color:var(--crit)"></span><div><div class="t">${esc(eqNome(m.equipamentoId))}</div><div class="d">Ação agendada atrasada — ${esc(PROX_ACOES[m.proximaAcao]||m.proximaAcao)} · ${fmtDate(m.proximaData)}</div></div></a>`).join("")}
           ${i.acoesProx.map(m=>`<a class="item" href="#/manutencoes/${m.id}"><span class="dot" style="color:var(--warn)"></span><div><div class="t">${esc(eqNome(m.equipamentoId))}</div><div class="d">Ação agendada em breve — ${esc(PROX_ACOES[m.proximaAcao]||m.proximaAcao)} · ${fmtDate(m.proximaData)}</div></div></a>`).join("")}
-          ${(!i.estCrit.length&&!i.prevVenc.length&&!i.osPeca.length&&!i.visitasVenc.length&&!i.visitasProx.length&&!i.acoesVenc.length&&!i.acoesProx.length)?'<div class="emptyst small">Nenhum alerta ativo.</div>':""}
+          ${(!i.prevVenc.length&&!i.osPeca.length&&!i.visitasVenc.length&&!i.visitasProx.length&&!i.acoesVenc.length&&!i.acoesProx.length)?'<div class="emptyst small">Nenhum alerta ativo.</div>':""}
         </div>
       </div>
       <div class="panel">
@@ -1665,6 +1686,22 @@ ROUTES.painel=v=>{
       </div>
     </div>
   </div>`;
+  v.querySelector("#verEstCrit").onclick=()=>{
+    const todos=[...i.estCrit].sort(porNome(p=>p.descricao));
+    modal({title:`Estoque crítico (${todos.length})`,wide:true,body:`
+      <p class="small muted" style="margin:0 0 10px">Produtos com estoque mínimo definido e saldo igual ou abaixo dele.</p>
+      ${todos.length>8?`<div class="searchbar" style="margin-bottom:10px"><span class="ic">⌕</span><input id="ecq" placeholder="Buscar produto…"></div>`:""}
+      <div class="list" id="eclist"></div>`,
+      footer:`<button class="btn" onclick="closeModal()">Fechar</button><a class="btn primary" href="#/estoque" onclick="closeModal()">Abrir Peças &amp; estoque</a>`});
+    const desenhar=q=>{
+      const lista=todos.filter(p=>!q||casaBusca([p.codigo,p.descricao],q));
+      $("#eclist").innerHTML=lista.slice(0,100).map(p=>`<div class="item"><span class="dot" style="color:var(--crit)"></span><div><div class="t">${esc(p.descricao)}</div><div class="d">${esc(p.codigo||"")} · estoque ${p.estoque} · mínimo ${p.minimo}</div></div></div>`).join("")
+        +(lista.length>100?`<div class="emptyst small">Mostrando 100 de ${lista.length} — use a busca.</div>`:"")
+        ||`<div class="emptyst small">${todos.length?"Nenhum produto encontrado.":"Nenhum item abaixo do mínimo."}</div>`;
+    };
+    desenhar("");
+    $("#ecq")&&($("#ecq").oninput=e=>desenhar(e.target.value));
+  };
 };
 
 /* ============ CLIENTES ============ */
