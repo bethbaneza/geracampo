@@ -109,6 +109,34 @@ saldo de estoque, custo, número/data/situação da OS).
   a pena conferir se ficou do jeito que você espera depois do primeiro
   teste.
 
+## Atualização automática (a cada 30 minutos)
+
+O próprio banco chama a sincronização de cada empresa conectada, mesmo com o app
+fechado. O que mudou no Bling aparece sozinho no Assist (OS, clientes, produtos),
+e só é regravado o que realmente mudou.
+
+1. **SQL Editor** → cole **`supabase-bling-auto.sql`** inteiro → Run. O último
+   resultado mostra uma coluna `copie_este_texto` — copie esse texto.
+2. **Edge Functions → Secrets → Add secret:** nome `CRON_SECRET`, valor = o texto
+   copiado no passo 1.
+3. **Edge Functions → bling-sync:** cole o código novo (`supabase/functions/bling-sync/index.ts`)
+   e **DESLIGUE o "Verify JWT"** (agora a própria função confere quem chama; o
+   agendamento do banco não tem login de usuário). Publique.
+4. **Teste:** no SQL Editor rode `select public.bling_sync_todas();` (devolve quantas
+   empresas foram disparadas). Em 1–2 minutos, em Configurações, "Última sincronização"
+   muda sozinha. Depois disso ele roda a cada 30 minutos.
+5. Em **Configurações → Integração com o Bling** dá para **desligar/ligar** a
+   atualização automática da sua empresa (botão "Desligar automática").
+
+Se a conexão com o Bling expirar (30 dias sem uso), aparece um aviso com o botão
+**Reconectar ao Bling**.
+
+Se não atualizar: veja o resultado das chamadas com
+`select status_code, content from net._http_response order by created desc limit 5;`
+— `401` + "segredo inválido" = `CRON_SECRET` diferente do texto do banco; `401` genérico =
+"Verify JWT" ainda ligado. Para ver se o agendamento está rodando:
+`select status, return_message, start_time from cron.job_run_details order by start_time desc limit 5;`
+
 ## Se der erro
 
 - **"Sem permissão" ao conectar:** confira se o Redirect URI no Bling

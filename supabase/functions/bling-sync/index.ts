@@ -1,21 +1,26 @@
 // Banheza Assist — sincronização com o Bling (API v3).
-// Chamada pelo próprio app (botão "Sincronizar agora" em Configurações),
-// já autenticada com o login do usuário — por isso "Verify JWT" fica LIGADO
-// aqui (diferente do bling-callback, que o Bling chama sem token nosso).
+// Duas formas de chamar:
+//   1) pelo app (botão "Sincronizar agora" em Configurações): confere o login do
+//      usuário e só deixa o administrador sincronizar a própria empresa;
+//   2) pelo agendamento automático do banco (pg_cron, a cada 30 min): sem login de
+//      usuário, protegida pelo segredo CRON_SECRET no cabeçalho x-cron-secret.
+// Como a própria função confere quem está chamando, "Verify JWT" fica DESLIGADO
+// (o agendamento do banco não tem login de usuário para mandar).
 //
 // Puxa Ordens de Serviço, Contatos e Produtos do Bling e grava/atualiza
 // nas tabelas do Banheza Assist (ordens, clientes, produtos), usando o
 // id "bling-xxx-<id do Bling>" pra sempre atualizar o mesmo registro em
 // vez de duplicar a cada sincronização.
 //
-// Deploy: Supabase -> Edge Functions -> Deploy new function -> nome "bling-sync"
-//   -> Verify JWT continua LIGADO (padrão).
-// Secrets: os mesmos BLING_CLIENT_ID / BLING_CLIENT_SECRET do bling-callback.
+// Deploy: Supabase -> Edge Functions -> bling-sync -> colar o código -> DESLIGAR "Verify JWT".
+// Secrets: BLING_CLIENT_ID, BLING_CLIENT_SECRET (os mesmos do bling-callback)
+//          e CRON_SECRET (texto que está em bling_cron_cfg, veja SETUP-BLING.md).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const CLIENT_ID = Deno.env.get("BLING_CLIENT_ID") ?? "";
 const CLIENT_SECRET = Deno.env.get("BLING_CLIENT_SECRET") ?? "";
+const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? ""; // segredo do agendamento automático (ver supabase-bling-auto.sql)
 const admin = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -94,10 +99,22 @@ async function upsertLote(tabela: string, rows: any[]): Promise<number> {
   for (let i = 0; i < rows.length; i += 500) {
     const pedaco = rows.slice(i, i + 500);
     const { error } = await admin.from(tabela).upsert(pedaco);
-    if (error) console.error(`upsert lote ${tabela}`, error); else n += pedaco.length;
+    if (error) throw new Error(`gravar ${tabela}: ${error.message}`);
+    n += pedaco.length;
   }
   return n;
 }
+
+// Compara dois objetos ignorando a ordem das chaves (o jsonb do banco reordena).
+const estavel = (v: any): string =>
+  JSON.stringify(v, (_k, x) =>
+    x && typeof x === "object" && !Array.isArray(x)
+      ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]]))
+      : x);
+// Só grava o que realmente mudou: sincronizações automáticas frequentes não devem
+// regravar centenas de registros iguais (isso dispararia atualização na tela de todo mundo).
+const soMudadas = (rows: any[], existentes: Map<string, any>) =>
+  rows.filter((r) => !existentes.has(r.id) || estavel(existentes.get(r.id)) !== estavel(r.dados));
 
 // Registros que já vieram do Bling antes. A sincronização MESCLA em cima deles em vez
 // de substituir, para não apagar o que a equipe completou dentro do Assist
@@ -177,8 +194,9 @@ async function syncOrdens(empresaId: string, headers: Record<string, string>) {
       atualizado_em: new Date().toISOString(),
     };
   });
-  const n = await upsertLote("ordens", rows);
-  return { n, equip };
+  const mudadas = soMudadas(rows, existentes);
+  await upsertLote("ordens", mudadas);
+  return { n: rows.length, equip, alterados: mudadas.length };
 }
 
 async function syncContatos(empresaId: string, headers: Record<string, string>) {
@@ -206,7 +224,9 @@ async function syncContatos(empresaId: string, headers: Record<string, string>) 
       atualizado_em: new Date().toISOString(),
     };
   });
-  return upsertLote("clientes", rows);
+  const mudadas = soMudadas(rows, existentes);
+  await upsertLote("clientes", mudadas);
+  return { n: rows.length, alterados: mudadas.length };
 }
 
 async function syncProdutos(empresaId: string, headers: Record<string, string>) {
@@ -232,34 +252,22 @@ async function syncProdutos(empresaId: string, headers: Record<string, string>) 
       atualizado_em: new Date().toISOString(),
     };
   });
-  return upsertLote("produtos", rows);
+  const mudadas = soMudadas(rows, existentes);
+  await upsertLote("produtos", mudadas);
+  return { n: rows.length, alterados: mudadas.length };
 }
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+// Sincroniza UMA empresa (usada pelo botão do app e pelo agendamento automático).
+async function sincronizarEmpresa(empresaId: string) {
+  const { data: conn } = await admin.from("bling_conexoes").select("*").eq("empresa_id", empresaId).maybeSingle();
+  if (!conn) return { ok: false, msg: "Bling não conectado" };
   try {
-    if (!CLIENT_ID || !CLIENT_SECRET) return ok({ ok: false, msg: "app do Bling não configurado (secrets ausentes)" });
-
-    const authHeader = req.headers.get("Authorization") || "";
-    const jwt = authHeader.replace(/^Bearer\s+/i, "");
-    if (!jwt) return fail("sem sessão");
-    const { data: userData, error: userErr } = await admin.auth.getUser(jwt);
-    if (userErr || !userData?.user) return fail("sessão inválida");
-
-    const { data: perfil } = await admin.from("perfis").select("empresa_id,papel,ativo").eq("id", userData.user.id).maybeSingle();
-    if (!perfil || !perfil.ativo || !perfil.empresa_id) return ok({ ok: false, msg: "perfil inválido" });
-    if (perfil.papel !== "admin") return ok({ ok: false, msg: "só o administrador sincroniza com o Bling" });
-    const empresaId = perfil.empresa_id as string;
-
-    const { data: conn } = await admin.from("bling_conexoes").select("*").eq("empresa_id", empresaId).maybeSingle();
-    if (!conn) return ok({ ok: false, msg: "Bling não conectado" });
-
     let accessToken = conn.access_token as string;
     if (!conn.expira_em || new Date(conn.expira_em).getTime() < Date.now() + 60000) {
       const refreshed = await refreshToken(conn.refresh_token);
       if (!refreshed) {
         await marcarErro(empresaId, "Não foi possível renovar a conexão — reconecte o Bling.");
-        return ok({ ok: false, msg: "conexão expirada — reconecte o Bling" });
+        return { ok: false, msg: "conexão expirada — reconecte o Bling" };
       }
       accessToken = refreshed.access_token;
       await admin.from("bling_conexoes").update({
@@ -277,10 +285,44 @@ Deno.serve(async (req: Request) => {
       syncContatos(empresaId, headers),
       syncProdutos(empresaId, headers),
     ]);
-    const os = ordens.n, equipamentos = ordens.equip;
-
     await admin.from("empresas").update({ bling_ultima_sync: new Date().toISOString(), bling_ultimo_erro: null }).eq("id", empresaId);
-    return ok({ ok: true, os, clientes, produtos, equipamentos });
+    return {
+      ok: true, os: ordens.n, clientes: clientes.n, produtos: produtos.n, equipamentos: ordens.equip,
+      alterados: ordens.alterados + clientes.alterados + produtos.alterados,
+    };
+  } catch (e) {
+    // deixa o motivo visível em Configurações (a sincronização automática não tem tela para mostrar erro)
+    await marcarErro(empresaId, "Falha ao sincronizar: " + (e as Error).message);
+    throw e;
+  }
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  try {
+    if (!CLIENT_ID || !CLIENT_SECRET) return ok({ ok: false, msg: "app do Bling não configurado (secrets ausentes)" });
+
+    // 1) Chamada agendada pelo banco (pg_cron): sem login de usuário, protegida por segredo.
+    const segredo = req.headers.get("x-cron-secret");
+    if (segredo !== null) {
+      if (!CRON_SECRET || segredo !== CRON_SECRET) return fail("segredo inválido");
+      const b = await req.json().catch(() => ({}));
+      const empresaId = String(b?.empresa_id || "");
+      if (!empresaId) return ok({ ok: false, msg: "empresa_id ausente" });
+      return ok(await sincronizarEmpresa(empresaId));
+    }
+
+    // 2) Chamada do app (botão "Sincronizar agora"): precisa de login de administrador.
+    const authHeader = req.headers.get("Authorization") || "";
+    const jwt = authHeader.replace(/^Bearer\s+/i, "");
+    if (!jwt) return fail("sem sessão");
+    const { data: userData, error: userErr } = await admin.auth.getUser(jwt);
+    if (userErr || !userData?.user) return fail("sessão inválida");
+
+    const { data: perfil } = await admin.from("perfis").select("empresa_id,papel,ativo").eq("id", userData.user.id).maybeSingle();
+    if (!perfil || !perfil.ativo || !perfil.empresa_id) return ok({ ok: false, msg: "perfil inválido" });
+    if (perfil.papel !== "admin") return ok({ ok: false, msg: "só o administrador sincroniza com o Bling" });
+    return ok(await sincronizarEmpresa(perfil.empresa_id as string));
   } catch (e) {
     console.error("bling-sync falhou:", e);
     return new Response("erro: " + (e as Error).message, { status: 500, headers: CORS });

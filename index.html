@@ -3481,9 +3481,10 @@ ROUTES.config=(v)=>{
     <p class="small muted" style="margin:0 0 12px">Puxa Ordens de Serviço, Clientes e Produtos direto do Bling — sem digitar nem importar PDF.</p>
     ${!adm?`<p class="small muted">Só o administrador conecta e sincroniza com o Bling.</p>`:!BLING_CLIENT_ID||BLING_CLIENT_ID.startsWith("[")?`
       <p class="small muted">A Banheza ainda está configurando essa integração. Em breve.</p>`:EMPRESA?.bling_conectado?`
-      <p class="small" style="margin:0 0 10px">${EMPRESA.bling_ultima_sync?"Última sincronização: "+fmtDT(EMPRESA.bling_ultima_sync):"Ainda não sincronizado."}</p>
-      ${EMPRESA.bling_ultimo_erro?`<div class="alertbox" style="margin-bottom:10px"><span>!</span><div>${esc(EMPRESA.bling_ultimo_erro)}</div></div>`:""}
-      <div class="actionbar"><button class="btn primary sm" id="blingSync">Sincronizar agora</button><button class="btn sm danger" id="blingDesc">Desconectar</button></div>`:`
+      <p class="small" style="margin:0 0 4px">${EMPRESA.bling_ultima_sync?"Última sincronização: "+fmtDT(EMPRESA.bling_ultima_sync):"Ainda não sincronizado."}</p>
+      <p class="small muted" style="margin:0 0 10px">Atualização automática: <b>${EMPRESA.bling_auto!==false?"ligada — a cada 30 minutos":"desligada"}</b>.</p>
+      ${EMPRESA.bling_ultimo_erro?`<div class="alertbox" style="margin-bottom:10px"><span>!</span><div>${esc(EMPRESA.bling_ultimo_erro)}${/reconecte/i.test(EMPRESA.bling_ultimo_erro)?' <button type="button" class="btn sm primary" id="blingReconectar" style="margin-left:6px">Reconectar ao Bling</button>':""}</div></div>`:""}
+      <div class="actionbar"><button class="btn primary sm" id="blingSync">Sincronizar agora</button><button class="btn sm" id="blingAuto">${EMPRESA.bling_auto!==false?"Desligar automática":"Ligar automática"}</button><button class="btn sm danger" id="blingDesc">Desconectar</button></div>`:`
       <button class="btn primary sm" id="blingConectar">Conectar ao Bling</button>`}
   </div>
 
@@ -3520,9 +3521,16 @@ ROUTES.config=(v)=>{
     audit("Edição","Identidade","main",cc.empresa);persist();
     renderNav();renderRole();toast("Identidade salva.");router();
   });
-  v.querySelector("#blingConectar")&&(v.querySelector("#blingConectar").onclick=()=>{
-    const url=BLING_AUTH_URL+"?response_type=code&client_id="+encodeURIComponent(BLING_CLIENT_ID)+"&state="+encodeURIComponent(PERFIL.empresa_id);
-    location.href=url;
+  const irParaAutorizarBling=()=>{location.href=BLING_AUTH_URL+"?response_type=code&client_id="+encodeURIComponent(BLING_CLIENT_ID)+"&state="+encodeURIComponent(PERFIL.empresa_id);};
+  v.querySelector("#blingConectar")&&(v.querySelector("#blingConectar").onclick=irParaAutorizarBling);
+  v.querySelector("#blingReconectar")&&(v.querySelector("#blingReconectar").onclick=irParaAutorizarBling);
+  v.querySelector("#blingAuto")&&(v.querySelector("#blingAuto").onclick=async()=>{
+    const novo=EMPRESA.bling_auto===false;   // se estava desligada, liga
+    try{
+      const{error}=await supa.rpc("bling_definir_auto",{p_auto:novo});
+      if(error)throw error;
+      EMPRESA.bling_auto=novo;toast(novo?"Atualização automática ligada (a cada 30 minutos).":"Atualização automática desligada.");router();
+    }catch(e){toast("Não foi possível mudar: "+(e.message||e)+" (o SQL da atualização automática já foi rodado?)");}
   });
   v.querySelector("#blingSync")&&(v.querySelector("#blingSync").onclick=async()=>{
     const b=v.querySelector("#blingSync");b.disabled=true;b.textContent="Sincronizando…";
@@ -3533,7 +3541,7 @@ ROUTES.config=(v)=>{
         try{if(error.context&&error.context.text)detalhe=(await error.context.text())||detalhe;}catch(e2){}
         throw new Error(detalhe);
       }
-      if(data&&data.ok)toast(`Sincronizado: ${data.os} OS, ${data.clientes} clientes, ${data.produtos} produtos`+(data.equipamentos?` · ${data.equipamentos} OS com equipamento/NS.`:"."));
+      if(data&&data.ok)toast(`Sincronizado: ${data.os} OS, ${data.clientes} clientes, ${data.produtos} produtos`+(data.equipamentos?` · ${data.equipamentos} OS com equipamento/NS`:"")+(typeof data.alterados==="number"?(data.alterados?` · ${data.alterados} novidade(s).`:" · nenhuma novidade."):"."));
       else toast(data&&data.msg?data.msg:"Não foi possível sincronizar.");
       await carregarTudo();router();
     }catch(e){toast("Erro ao sincronizar: "+(e.message||e));}
