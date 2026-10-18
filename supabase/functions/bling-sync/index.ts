@@ -99,67 +99,139 @@ async function upsertLote(tabela: string, rows: any[]): Promise<number> {
   return n;
 }
 
+// Registros que já vieram do Bling antes. A sincronização MESCLA em cima deles em vez
+// de substituir, para não apagar o que a equipe completou dentro do Assist
+// (e-mail/endereço do cliente, estoque mínimo, equipamento vinculado à OS, etc.).
+async function carregarExistentes(tabela: string, empresaId: string, prefixo: string) {
+  const mapa = new Map<string, any>();
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await admin.from(tabela).select("id,dados")
+      .eq("empresa_id", empresaId).like("id", `${prefixo}%`).range(de, de + 999);
+    if (error) { console.error(`existentes ${tabela}`, error); break; }
+    for (const r of data || []) mapa.set(r.id, r.dados || {});
+    if (!data || data.length < 1000) break;
+  }
+  return mapa;
+}
+
+// A listagem de OS do Bling não traz equipamento nem nº de série; só o detalhe (GET /ordens/servico/{id}).
+async function blingDetalheOS(id: number, headers: Record<string, string>) {
+  const r = await blingFetch(`${API}/ordens/servico/${id}`, headers);
+  if (!r.ok) { console.error("detalhe OS", id, r.status); return null; }
+  const b = await r.json().catch(() => null);
+  return b?.data ?? null;
+}
+
 async function syncOrdens(empresaId: string, headers: Record<string, string>) {
-  const itens = await blingList("/ordens/servico", headers, {});
-  const rows = itens.map((os: any) => ({
-    id: `bling-os-${os.id}`,
-    empresa_id: empresaId,
-    dados: {
-      numeroBling: String(os.numero ?? os.id),
-      criadaEm: os.data ? `${os.data}T00:00:00.000Z` : new Date().toISOString(),
-      clienteId: os.contato?.id ? `bling-cli-${os.contato.id}` : null,
-      descricao: os.observacoesInternas || `OS ${os.numero ?? os.id}`,
-      status: mapSituacaoOS(os.situacao?.valor),
-      equipamentoId: null,
-      tipoAtendimento: null,
-      situacaoCobranca: typeof os.total === "number" ? `R$ ${os.total.toFixed(2)}` : "Não se aplica",
-      origem: "bling",
-    },
-    atualizado_em: new Date().toISOString(),
-  }));
-  return upsertLote("ordens", rows);
+  const [itens, existentes] = await Promise.all([
+    blingList("/ordens/servico", headers, {}),
+    carregarExistentes("ordens", empresaId, "bling-os-"),
+  ]);
+  const agora = Date.now();
+  // Detalhe só das OS ainda não finalizadas, mais recentes primeiro, no máximo 30 por
+  // sincronização (e de novo só depois de 3 dias) — respeita o limite de chamadas do Bling.
+  const precisaDetalhe = (os: any) => {
+    if (os.situacao?.valor === 3) return false;
+    const em = existentes.get(`bling-os-${os.id}`)?.detalheEm;
+    return !em || agora - new Date(em).getTime() > 3 * 86400000;
+  };
+  const alvos = itens.filter(precisaDetalhe)
+    .sort((a: any, b: any) => String(b.data || "").localeCompare(String(a.data || ""))).slice(0, 30);
+  const detalhes = new Map<number, any>();
+  for (const os of alvos) {
+    const d = await blingDetalheOS(os.id, headers);
+    if (d) detalhes.set(os.id, d);
+    await new Promise((res) => setTimeout(res, 350));
+  }
+  let equip = 0;
+  const rows = itens.map((os: any) => {
+    const id = `bling-os-${os.id}`;
+    const antigo = existentes.get(id) || null;
+    const det = detalhes.get(os.id) || null;
+    const base = os.observacoesInternas || `OS ${os.numero ?? os.id}`;
+    const statusBling = mapSituacaoOS(os.situacao?.valor);
+    const nome = String(det?.equipamento ?? "").trim();
+    const ns = String(det?.numeroSerieEquipamento ?? "").trim();
+    const equipBling = det ? (nome || ns ? { nome, ns } : null) : (antigo?.equipBling ?? null);
+    if (equipBling?.ns) equip++;
+    const problema = String(det?.descricaoProblema ?? "").trim();
+    return {
+      id,
+      empresa_id: empresaId,
+      dados: {
+        ...(antigo || { equipamentoIds: [], tipoAtendimento: null }),
+        numeroBling: String(os.numero ?? os.id),
+        criadaEm: os.data ? `${os.data}T00:00:00.000Z` : (antigo?.criadaEm ?? new Date().toISOString()),
+        clienteId: os.contato?.id ? `bling-cli-${os.contato.id}` : (antigo?.clienteId ?? null),
+        // só troca a descrição se ninguém a editou no Assist
+        descricao: (!antigo || !antigo.descricao || antigo.descricao === base) ? (problema || base) : antigo.descricao,
+        // o andamento feito no Assist vale, exceto quando o Bling finaliza a OS
+        status: statusBling === "encerrada" ? "encerrada"
+          : (antigo?.status && antigo.status !== "aberta" ? antigo.status : statusBling),
+        situacaoCobranca: antigo?.situacaoCobranca
+          ?? (typeof os.total === "number" ? `R$ ${os.total.toFixed(2)}` : "Não se aplica"),
+        equipBling,
+        detalheEm: det ? new Date().toISOString() : (antigo?.detalheEm ?? null),
+        origem: "bling",
+      },
+      atualizado_em: new Date().toISOString(),
+    };
+  });
+  const n = await upsertLote("ordens", rows);
+  return { n, equip };
 }
 
 async function syncContatos(empresaId: string, headers: Record<string, string>) {
-  const itens = await blingList("/contatos", headers, { criterio: "1" });
-  const rows = itens.filter((c: any) => c.situacao !== "E").map((c: any) => ({
-    id: `bling-cli-${c.id}`,
-    empresa_id: empresaId,
-    dados: {
-      razao: c.nome || "(sem nome)",
-      fantasia: c.nome || "(sem nome)",
-      doc: c.numeroDocumento || "",
-      tel: c.telefone || c.celular || "",
-      email: "",
-      endereco: "",
-      cidade: "",
-      contatos: "",
-      blingId: c.codigo || String(c.id),
-      relacao: "assistencia",
-      origem: "bling",
-    },
-    atualizado_em: new Date().toISOString(),
-  }));
+  const [itens, existentes] = await Promise.all([
+    blingList("/contatos", headers, { criterio: "1" }),
+    carregarExistentes("clientes", empresaId, "bling-cli-"),
+  ]);
+  const rows = itens.filter((c: any) => c.situacao !== "E").map((c: any) => {
+    const id = `bling-cli-${c.id}`;
+    const antigo = existentes.get(id) || null;
+    return {
+      id,
+      empresa_id: empresaId,
+      dados: {
+        ...(antigo || {
+          fantasia: c.nome || "(sem nome)", email: "", cep: "", endereco: "", cidade: "",
+          contatos: "", relacao: "assistencia",
+        }),
+        razao: c.nome || antigo?.razao || "(sem nome)",
+        doc: c.numeroDocumento || antigo?.doc || "",
+        tel: c.telefone || c.celular || antigo?.tel || "",
+        blingId: c.codigo || String(c.id),
+        origem: "bling",
+      },
+      atualizado_em: new Date().toISOString(),
+    };
+  });
   return upsertLote("clientes", rows);
 }
 
 async function syncProdutos(empresaId: string, headers: Record<string, string>) {
-  const itens = await blingList("/produtos", headers, { criterio: "2", tipo: "P" });
-  const rows = itens.map((p: any) => ({
-    id: `bling-prod-${p.id}`,
-    empresa_id: empresaId,
-    dados: {
-      descricao: p.nome || "(sem nome)",
-      codigo: p.codigo || "",
-      referencia: p.codigo || "",
-      barras: "",
-      estoque: Math.round(p.estoque?.saldoVirtualTotal ?? 0),
-      minimo: 0,
-      custo: Number(p.precoCusto ?? p.preco ?? 0),
-      fonte: "Bling",
-    },
-    atualizado_em: new Date().toISOString(),
-  }));
+  const [itens, existentes] = await Promise.all([
+    blingList("/produtos", headers, { criterio: "2", tipo: "P" }),
+    carregarExistentes("produtos", empresaId, "bling-prod-"),
+  ]);
+  const rows = itens.map((p: any) => {
+    const id = `bling-prod-${p.id}`;
+    const antigo = existentes.get(id) || null;
+    return {
+      id,
+      empresa_id: empresaId,
+      dados: {
+        ...(antigo || { barras: "", minimo: 0 }),
+        descricao: p.nome || antigo?.descricao || "(sem nome)",
+        codigo: p.codigo || antigo?.codigo || "",
+        referencia: antigo?.referencia ?? (p.codigo || ""),
+        estoque: Math.round(p.estoque?.saldoVirtualTotal ?? 0),
+        custo: Number(p.precoCusto ?? p.preco ?? 0),
+        fonte: "Bling",
+      },
+      atualizado_em: new Date().toISOString(),
+    };
+  });
   return upsertLote("produtos", rows);
 }
 
@@ -200,14 +272,15 @@ Deno.serve(async (req: Request) => {
 
     const headers = { Authorization: `Bearer ${accessToken}`, Accept: "application/json" };
     // os 3 recursos em paralelo — sequencial estourava o tempo máximo de execução
-    const [os, clientes, produtos] = await Promise.all([
+    const [ordens, clientes, produtos] = await Promise.all([
       syncOrdens(empresaId, headers),
       syncContatos(empresaId, headers),
       syncProdutos(empresaId, headers),
     ]);
+    const os = ordens.n, equipamentos = ordens.equip;
 
     await admin.from("empresas").update({ bling_ultima_sync: new Date().toISOString(), bling_ultimo_erro: null }).eq("id", empresaId);
-    return ok({ ok: true, os, clientes, produtos });
+    return ok({ ok: true, os, clientes, produtos, equipamentos });
   } catch (e) {
     console.error("bling-sync falhou:", e);
     return new Response("erro: " + (e as Error).message, { status: 500, headers: CORS });
