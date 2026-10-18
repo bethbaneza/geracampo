@@ -54,9 +54,9 @@ async function blingFetch(url: string, headers: Record<string, string>): Promise
   return fetch(url, { headers });
 }
 
-async function blingList(path: string, headers: Record<string, string>, extra: Record<string, string>) {
+async function blingList(path: string, headers: Record<string, string>, extra: Record<string, string>, maxPaginas = 20) {
   const out: any[] = [];
-  for (let pagina = 1; pagina <= 20; pagina++) {
+  for (let pagina = 1; pagina <= maxPaginas; pagina++) {
     const qs = new URLSearchParams({ pagina: String(pagina), limite: "100", ...extra });
     const r = await blingFetch(`${API}${path}?${qs}`, headers);
     if (!r.ok) { console.error("bling list erro", path, r.status, await r.text().catch(() => "")); break; }
@@ -139,7 +139,7 @@ async function blingDetalheOS(id: number, headers: Record<string, string>) {
   return b?.data ?? null;
 }
 
-async function syncOrdens(empresaId: string, headers: Record<string, string>) {
+async function syncOrdens(empresaId: string, headers: Record<string, string>, contatos: Promise<{ ids: Set<string> }>) {
   const [itens, existentes] = await Promise.all([
     blingList("/ordens/servico", headers, {}),
     carregarExistentes("ordens", empresaId, "bling-os-"),
@@ -178,7 +178,8 @@ async function syncOrdens(empresaId: string, headers: Record<string, string>) {
       dados: {
         ...(antigo || { equipamentoIds: [], tipoAtendimento: null }),
         numeroBling: String(os.numero ?? os.id),
-        criadaEm: os.data ? `${os.data}T00:00:00.000Z` : (antigo?.criadaEm ?? new Date().toISOString()),
+        // meio-dia (UTC) para a data não "voltar um dia" ao converter para o horário do Brasil
+        criadaEm: os.data ? `${os.data}T12:00:00.000Z` : (antigo?.criadaEm ?? new Date().toISOString()),
         clienteId: os.contato?.id ? `bling-cli-${os.contato.id}` : (antigo?.clienteId ?? null),
         // só troca a descrição se ninguém a editou no Assist
         descricao: (!antigo || !antigo.descricao || antigo.descricao === base) ? (problema || base) : antigo.descricao,
@@ -196,12 +197,36 @@ async function syncOrdens(empresaId: string, headers: Record<string, string>) {
   });
   const mudadas = soMudadas(rows, existentes);
   await upsertLote("ordens", mudadas);
-  return { n: rows.length, equip, alterados: mudadas.length };
+
+  // Toda OS precisa mostrar o nome do cliente. Se o contato da OS não veio na lista de contatos
+  // (lista longa, contato de outro tipo etc.), cria o cliente na hora com o nome que a própria OS
+  // traz. Espera a sincronização de contatos terminar antes, para nunca sobrescrever dados completos.
+  const { ids } = await contatos;
+  const novos = new Map<string, any>();
+  for (const os of itens) {
+    const cid = os.contato?.id;
+    if (!cid) continue;
+    const id = `bling-cli-${cid}`;
+    if (ids.has(id) || novos.has(id)) continue;
+    const nome = String(os.contato?.nome ?? "").trim() || `Contato ${cid}`;
+    novos.set(id, {
+      id,
+      empresa_id: empresaId,
+      dados: {
+        razao: nome, fantasia: nome, doc: "", tel: "", email: "", cep: "", endereco: "", cidade: "",
+        contatos: "", relacao: "assistencia", blingId: String(cid), origem: "bling", doBling: true,
+      },
+      atualizado_em: new Date().toISOString(),
+    });
+  }
+  await upsertLote("clientes", [...novos.values()]);
+  return { n: rows.length, equip, alterados: mudadas.length + novos.size };
 }
 
+const MAX_PAG_CONTATOS = 60; // 60 páginas x 100 = até 6.000 contatos por sincronização
 async function syncContatos(empresaId: string, headers: Record<string, string>) {
   const [itens, existentes] = await Promise.all([
-    blingList("/contatos", headers, { criterio: "1" }),
+    blingList("/contatos", headers, { criterio: "1" }, MAX_PAG_CONTATOS),
     carregarExistentes("clientes", empresaId, "bling-cli-"),
   ]);
   const rows = itens.filter((c: any) => c.situacao !== "E").map((c: any) => {
@@ -226,7 +251,9 @@ async function syncContatos(empresaId: string, headers: Record<string, string>) 
   });
   const mudadas = soMudadas(rows, existentes);
   await upsertLote("clientes", mudadas);
-  return { n: rows.length, alterados: mudadas.length };
+  // ids de todos os clientes que já existem (antes + agora): syncOrdens usa para saber quem falta
+  const ids = new Set<string>([...existentes.keys(), ...rows.map((r: any) => r.id)]);
+  return { n: rows.length, alterados: mudadas.length, ids, truncado: itens.length >= MAX_PAG_CONTATOS * 100 };
 }
 
 async function syncProdutos(empresaId: string, headers: Record<string, string>) {
@@ -280,12 +307,18 @@ async function sincronizarEmpresa(empresaId: string) {
 
     const headers = { Authorization: `Bearer ${accessToken}`, Accept: "application/json" };
     // os 3 recursos em paralelo — sequencial estourava o tempo máximo de execução
+    const pContatos = syncContatos(empresaId, headers);
     const [ordens, clientes, produtos] = await Promise.all([
-      syncOrdens(empresaId, headers),
-      syncContatos(empresaId, headers),
+      syncOrdens(empresaId, headers, pContatos),
+      pContatos,
       syncProdutos(empresaId, headers),
     ]);
-    await admin.from("empresas").update({ bling_ultima_sync: new Date().toISOString(), bling_ultimo_erro: null }).eq("id", empresaId);
+    await admin.from("empresas").update({
+      bling_ultima_sync: new Date().toISOString(),
+      bling_ultimo_erro: clientes.truncado
+        ? `Aviso: o Bling tem mais de ${MAX_PAG_CONTATOS * 100} contatos; só os primeiros foram importados (clientes das OS são criados mesmo assim).`
+        : null,
+    }).eq("id", empresaId);
     return {
       ok: true, os: ordens.n, clientes: clientes.n, produtos: produtos.n, equipamentos: ordens.equip,
       alterados: ordens.alterados + clientes.alterados + produtos.alterados,

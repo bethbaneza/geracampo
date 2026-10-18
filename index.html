@@ -1020,6 +1020,10 @@ const eqNome=id=>{const e=byId("equipamentos",id);return e?e.ns+" · "+e.modelo:
 /* lista de equipamentos de uma OS — aceita o.equipamentoIds (novo) ou o.equipamentoId (registros antigos) */
 const osEquipIds=o=>o.equipamentoIds&&o.equipamentoIds.length?o.equipamentoIds:(o.equipamentoId?[o.equipamentoId]:[]);
 const osEquipTxt=o=>{const ids=osEquipIds(o);return ids.length?ids.map(eqNome).join(", "):"—";};
+/* ordenação: OS da mais nova para a mais antiga (empate: maior número primeiro); clientes/produtos em ordem alfabética */
+const numOS=o=>parseInt(String(o.numeroBling).replace(/\D/g,""),10)||0;
+const ordenarOS=l=>l.sort((a,b)=>(new Date(b.criadaEm)-new Date(a.criadaEm))||(numOS(b)-numOS(a)));
+const porNome=f=>(a,b)=>String(f(a)||"").localeCompare(String(f(b)||""),"pt-BR",{sensitivity:"base"});
 /* equipamento informado pelo Bling na OS (nome + nº de série): acha o NS já cadastrado, ignorando espaço/traço/ponto/caixa */
 const normNS=s=>String(s||"").replace(/[\s.\-\/]+/g,"").toUpperCase();
 const equipPorNS=ns=>{const n=normNS(ns);return n?DB.equipamentos.find(e=>ativo(e)&&normNS(e.ns)===n)||null:null;};
@@ -1621,7 +1625,7 @@ ROUTES.painel=v=>{
   <div class="detailgrid two">
     <div class="panel">
       <div class="ph"><h3>Ordens de Serviço recentes</h3><a class="btn ghost sm" href="#/os">Ver todas</a></div>
-      <div class="list">${DB.ordens.filter(ativo).slice(0,6).map(o=>`
+      <div class="list">${ordenarOS(DB.ordens.filter(ativo)).slice(0,6).map(o=>`
         <a class="item" href="#/os/${o.id}">
           <span class="avatar">${esc((cliNome(o.clienteId)[0]||"?"))}</span>
           <div><div class="t">${esc(o.numeroBling)} · ${esc(cliNome(o.clienteId))}</div><div class="d">${esc(o.descricao)}</div></div>
@@ -1657,7 +1661,7 @@ ROUTES.clientes=(v,rest)=>{
   if(rest[0]==="novo")return clienteForm(v,null);
   let q="";
   const draw=()=>{
-    const list=DB.clientes.filter(ativo).filter(c=>!q||casaBusca([c.razao,c.fantasia,c.doc,c.blingId,c.cidade],q));
+    const list=DB.clientes.filter(ativo).filter(c=>!q||casaBusca([c.razao,c.fantasia,c.doc,c.blingId,c.cidade],q)).sort(porNome(c=>c.fantasia||c.razao));
     v.querySelector("#clist").innerHTML=list.map(c=>{
       const eqs=DB.equipamentos.filter(e=>ativo(e)&&e.clienteId===c.id).length;
       const osAb=DB.ordens.filter(o=>ativo(o)&&o.clienteId===c.id&&o.status!=="encerrada").length;
@@ -1992,7 +1996,7 @@ ROUTES.os=(v,rest)=>{
   if(rest[0])return osDetalhe(v,rest[0]);
   let f="ativas",q="";
   const draw=()=>{
-    let list=DB.ordens.filter(ativo);
+    let list=ordenarOS(DB.ordens.filter(ativo));
     if(f==="ativas")list=list.filter(o=>o.status==="aberta"||o.status==="em_atendimento");
     else if(f!=="todas")list=list.filter(o=>o.status===f);
     if(q)list=list.filter(o=>casaBusca([o.numeroBling,cliNome(o.clienteId),o.descricao],q));
@@ -2472,7 +2476,7 @@ function addPecaModal(m,cb){
     footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="okpeca" disabled>Adicionar</button>`});
   let sel=null;
   const drawP=q=>{
-    const list=DB.produtos.filter(ativo).filter(p=>!q||casaBusca([p.codigo,p.descricao,p.referencia,p.barras],q));
+    const list=DB.produtos.filter(ativo).filter(p=>!q||casaBusca([p.codigo,p.descricao,p.referencia,p.barras],q)).sort(porNome(p=>p.descricao));
     $("#plist").innerHTML=list.map(p=>`<button class="item" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-2)" data-p="${p.id}">
       <div><div class="t">${esc(p.descricao)}</div><div class="d mono">${esc(p.codigo)} · ref ${esc(p.referencia)} · barras ${esc(p.barras)}</div></div>
       <span class="sp"></span><span class="pill ${p.estoque<=p.minimo?"crit":"good"}">estoque ${p.estoque}</span></button>`).join("")||'<div class="emptyst small">Nada encontrado.</div>';
@@ -2782,7 +2786,7 @@ function produtoModal(p){
 ROUTES.estoque=(v)=>{
   let q="";
   const draw=()=>{
-    const list=DB.produtos.filter(ativo).filter(p=>!q||casaBusca([p.codigo,p.descricao,p.referencia,p.barras],q));
+    const list=DB.produtos.filter(ativo).filter(p=>!q||casaBusca([p.codigo,p.descricao,p.referencia,p.barras],q)).sort(porNome(p=>p.descricao));
     v.querySelector("#prodBody").innerHTML=list.map(p=>`<tr>
       <td><div style="font-weight:600">${esc(p.descricao)}</div><div class="small muted mono">${esc(p.codigo||"—")} · ${esc(p.referencia||"")} · ${esc(p.barras||"")}</div></td>
       <td class="tnum">${p.estoque}</td><td class="tnum">${p.minimo}</td><td class="tnum">${money(p.custo)}</td>
