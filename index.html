@@ -1951,6 +1951,19 @@ function equipForm(v,e){
   ligarCep(v.querySelector("#cep"),j=>{
     v.querySelector("#endereco").value=[j.logradouro,j.bairro,j.localidade&&j.uf?j.localidade+"/"+j.uf:""].filter(Boolean).join(", ");
   });
+  /* endereço do cliente escolhido: copia só se o campo estiver vazio (ou ainda com o que foi copiado antes) */
+  let endAuto="",cepAuto="";
+  const copiarEnderecoDoCliente=avisar=>{
+    const c=byId("clientes",v.querySelector("#clienteId").value);if(!c)return;
+    const end=v.querySelector("#endereco"),cep=v.querySelector("#cep");
+    const novo=[c.endereco,c.cidade].filter(Boolean).join(", ");
+    if(!novo||!(end.value.trim()===""||end.value===endAuto)||end.value===novo)return;
+    end.value=novo;endAuto=novo;
+    if(cep.value.trim()===""||cep.value===cepAuto){cep.value=c.cep||"";cepAuto=c.cep||"";}
+    if(avisar)toast("Endereço copiado do cliente.");
+  };
+  v.querySelector("#clienteId").addEventListener("change",()=>copiarEnderecoDoCliente(true));
+  if(!e)copiarEnderecoDoCliente(false);
   v.querySelector("#save").onclick=()=>{
     const g=id=>v.querySelector("#"+id).value.trim();
     if(!g("ns"))return toast("NS é obrigatório.");
