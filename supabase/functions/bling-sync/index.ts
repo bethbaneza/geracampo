@@ -425,18 +425,24 @@ async function homologar(empresaId: string) {
   const passos: { passo: string; status: number; renovouToken: boolean; ms: number }[] = [];
   let hash = "";
   const t0 = Date.now();
+  let ultima = 0; // o Bling aceita no máximo 3 chamadas por segundo: espaça as chamadas (cabe folgado nos 10 s do teste)
+  let renovou = false;
   const chamar = async (passo: string, metodo: string, caminho: string, corpo?: unknown) => {
-    for (let tentativa = 0; tentativa < 2; tentativa++) {
+    for (let tentativa = 0; tentativa < 5; tentativa++) {
+      const espera = 450 - (Date.now() - ultima);
+      if (espera > 0) await new Promise((res) => setTimeout(res, espera));
+      ultima = Date.now();
       const h: Record<string, string> = { Authorization: `Bearer ${access}`, Accept: "application/json" };
       if (corpo !== undefined) h["Content-Type"] = "application/json";
       if (hash) h["x-bling-homologacao"] = hash;
       const ini = Date.now();
       const r = await fetch(`${API}${caminho}`, { method: metodo, headers: h, body: corpo !== undefined ? JSON.stringify(corpo) : undefined });
-      if (r.status === 401 && tentativa === 0) { await renovar(); continue; }
+      if (r.status === 429) { await r.text().catch(() => ""); await new Promise((res) => setTimeout(res, 800)); continue; }
+      if (r.status === 401 && !renovou) { await r.text().catch(() => ""); renovou = true; await renovar(); continue; }
       const novo = r.headers.get("x-bling-homologacao");
       if (novo) hash = novo;
       const txt = await r.text();
-      passos.push({ passo, status: r.status, renovouToken: tentativa === 1, ms: Date.now() - ini });
+      passos.push({ passo, status: r.status, renovouToken: renovou, ms: Date.now() - ini });
       if (!r.ok) throw new Error(`${passo}: erro ${r.status} ${txt.slice(0, 300)}`);
       try { return JSON.parse(txt); } catch { return null; }
     }
