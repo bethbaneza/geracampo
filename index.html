@@ -489,7 +489,8 @@ function ligarCep(el,onAchou){
   el.addEventListener("blur",buscar);
 }
 const nowISO=()=>new Date().toISOString();
-const fmtDate=d=>d?new Date(d).toLocaleDateString("pt-BR"):"—";
+/* data só com dia (2026-07-21, vinda de campo <input type=date>) é mostrada como está; new Date() a trataria como UTC e mostraria 1 dia a menos no Brasil */
+const fmtDate=d=>{if(!d)return "—";const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d));return m?m[3]+"/"+m[2]+"/"+m[1]:new Date(d).toLocaleDateString("pt-BR");};
 const fmtDT=d=>d?new Date(d).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";
 const fmtTime=d=>d?new Date(d).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}):"—";
 const money=n=>"R$ "+(Number(n)||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -1848,6 +1849,98 @@ function clienteForm(v,c){
 }
 
 /* ============ EQUIPAMENTOS ============ */
+/* ---------- importar equipamentos de uma planilha (CSV) ----------
+   Cada linha vira um equipamento da empresa logada (nunca de outras). Mostra uma conferência antes de gravar. */
+function lerCSV(texto){
+  texto=String(texto||"");if(texto.charCodeAt(0)===65279)texto=texto.slice(1);
+  const prim=texto.split(/\r?\n/)[0]||"";
+  const sep=[";","\t",","].map(s=>[s,prim.split(s).length]).sort((a,b)=>b[1]-a[1])[0][0];
+  const linhas=[];let cel="",lin=[],asp=false;
+  const fimLinha=()=>{lin.push(cel);cel="";if(lin.some(x=>x.trim()!==""))linhas.push(lin);lin=[];};
+  for(let i=0;i<texto.length;i++){
+    const c=texto[i];
+    if(asp){if(c==='"'){if(texto[i+1]==='"'){cel+='"';i++;}else asp=false;}else cel+=c;}
+    else if(c==='"')asp=true;
+    else if(c===sep){lin.push(cel);cel="";}
+    else if(c==="\n"||c==="\r"){if(c==="\r"&&texto[i+1]==="\n")i++;fimLinha();}
+    else cel+=c;
+  }
+  if(cel!==""||lin.length)fimLinha();
+  return linhas;
+}
+const COLUNAS_EQ={ns:["ns","serie","numeroserie","numerodeserie","nserie"],modelo:["modelo","tamanho"],fabricante:["fabricante","marca"],
+  cliente:["cliente","razaosocial","razao","nomecliente"],data:["data","datainstalacao","datainclusao","instalacao"],obs:["obs","observacao","observacoes"]};
+const chaveCol=s=>semAcento(s).replace(/[^a-z0-9]/g,"");
+const nomeChave=s=>semAcento(s).replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
+function dataISO(s){
+  s=String(s||"").trim();let m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+  if(m)return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");
+  m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s);return m?m[0]:"";
+}
+function analisarPlanilhaEquip(texto){
+  const linhas=lerCSV(texto);if(linhas.length<2)return{erro:"A planilha está vazia."};
+  const cab=linhas[0].map(chaveCol),idx={};
+  for(const k in COLUNAS_EQ)idx[k]=cab.findIndex(h=>COLUNAS_EQ[k].includes(h));
+  if(idx.ns<0||idx.cliente<0)return{erro:"A primeira linha precisa ter as colunas \"ns\" e \"cliente\" (e, se quiser: modelo, fabricante, data_instalacao, obs)."};
+  const get=(l,k)=>idx[k]>=0?String(l[idx[k]]||"").trim():"";
+  // clientes pelo nome (sem acento/pontuação); contém só vale se o trecho tem 8+ letras e há um único candidato
+  const cs=DB.clientes.filter(ativo),porNome=new Map();
+  cs.forEach(c=>[c.razao,c.fantasia].forEach(n=>{const k=nomeChave(n);if(k&&!porNome.has(k))porNome.set(k,c);}));
+  const achaCliente=nome=>{
+    const k=nomeChave(nome);if(!k)return null;
+    if(porNome.has(k))return porNome.get(k);
+    const r=new Set();
+    porNome.forEach((c,n)=>{const [a,b]=n.length<k.length?[n,k]:[k,n];if(a.length>=8&&b.includes(a))r.add(c);});
+    return r.size===1?[...r][0]:null;
+  };
+  const vistos=new Set(),rows=[];
+  for(const l of linhas.slice(1)){
+    const r={ns:get(l,"ns"),modelo:get(l,"modelo"),fabricante:get(l,"fabricante"),clienteTxt:get(l,"cliente"),data:dataISO(get(l,"data")),obs:get(l,"obs")};
+    const n=normNS(r.ns);r.cliente=achaCliente(r.clienteTxt);
+    if(!n)r.estado="semns";
+    else if(equipPorNS(r.ns))r.estado="existe";
+    else if(vistos.has(n))r.estado="repetido";
+    else if(!r.cliente)r.estado="semcliente";
+    else{
+      const par=DB.equipamentos.find(e=>{if(!ativo(e)||e.clienteId!==r.cliente.id)return false;const m=normNS(e.ns);return Math.min(m.length,n.length)>=6&&(m.startsWith(n)||n.startsWith(m));});
+      r.estado=par?"parecido":"ok";if(par)r.parecido=par.ns;
+    }
+    if(n)vistos.add(n);
+    r.marcado=r.estado==="ok";rows.push(r);
+  }
+  return{rows};
+}
+const ESTADO_EQ={ok:["good","Novo"],parecido:["warn","Parecido com um NS que já existe"],existe:["","Já cadastrado — ignorado"],repetido:["","NS repetido na planilha — ignorado"],
+  semcliente:["crit","Cliente não encontrado"],semns:["crit","Sem NS"]};
+function abrirImportEquip(texto){
+  const a=analisarPlanilhaEquip(texto);if(a.erro)return toast(a.erro);
+  const rows=a.rows;
+  const importaveis=r=>r.estado==="ok"||r.estado==="parecido";
+  const conta=()=>rows.filter(r=>importaveis(r)&&r.marcado).length;
+  modal({title:"Importar equipamentos",wide:true,body:`
+    <p class="small muted" style="margin:0 0 10px">${rows.length} linha(s) na planilha. Confira antes de importar — só entram os marcados, e apenas na <b>sua empresa</b>.</p>
+    <div class="tblwrap" style="max-height:52vh;overflow:auto"><table class="tbl"><thead><tr><th></th><th>NS</th><th>Modelo</th><th>Cliente</th><th>Situação</th></tr></thead><tbody>
+    ${rows.map((r,i)=>`<tr><td><input type="checkbox" data-r="${i}" style="width:auto;min-height:0"${r.marcado?" checked":""}${importaveis(r)?"":" disabled"}></td>
+      <td class="mono small">${esc(r.ns||"—")}</td><td class="small">${esc(r.modelo||"—")}</td>
+      <td class="small">${r.cliente?esc(r.cliente.fantasia||r.cliente.razao):`<span class="muted">${esc(r.clienteTxt||"—")}</span>`}</td>
+      <td><span class="pill ${ESTADO_EQ[r.estado][0]}">${esc(ESTADO_EQ[r.estado][1])}</span>${r.parecido?` <span class="small muted">(${esc(r.parecido)})</span>`:""}</td></tr>`).join("")}
+    </tbody></table></div>`,
+    footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="okImpEq"></button>`});
+  const atualiza=()=>{const n=conta(),b=$("#okImpEq");b.textContent=n?`Importar ${n} equipamento${n>1?"s":""}`:"Nada para importar";b.disabled=!n;};
+  document.querySelectorAll("#modalbg input[data-r]").forEach(cb=>cb.onchange=()=>{rows[+cb.dataset.r].marcado=cb.checked;atualiza();});
+  atualiza();
+  $("#okImpEq").onclick=()=>{
+    const novos=rows.filter(r=>importaveis(r)&&r.marcado);
+    novos.forEach(r=>{
+      const c=r.cliente,ini=r.data?new Date(r.data+"T12:00:00").toISOString():nowISO();
+      DB.equipamentos.unshift({id:uid("eq"),criadoEm:nowISO(),ns:r.ns,produtoId:null,modelo:r.modelo,fabricante:r.fabricante,dataFab:"",dataInstal:r.data,
+        status:"Ativo",clienteId:c.id,vinculo:"locado",classAtend:"locacao",local:"",cep:c.cep||"",endereco:[c.endereco,c.cidade].filter(Boolean).join(", "),setor:"",
+        obsInstal:r.obs,camposValores:{},instalacoes:[{clienteId:c.id,inicio:ini,fim:null}]});
+    });
+    audit("Importação","Equipamento","",novos.length+" equipamento(s) importado(s) de planilha");persist();closeModal();
+    toast(novos.length+" equipamento(s) importado(s).");router();
+  };
+}
 ROUTES.equipamentos=(v,rest)=>{
   if(rest[0]==="novo")return equipForm(v,null);
   if(rest[0])return equipDetalhe(v,rest[0]);
@@ -1862,12 +1955,19 @@ ROUTES.equipamentos=(v,rest)=>{
       <span class="sp"></span>${e.classAtend?tipoAtendPill(e.classAtend):""}<span class="pill ${e.status==="Ativo"?"good":e.status==="Retirado"||e.status==="Descartado"?"crit":""}">${esc(e.status)}</span></a>`).join("")||'<div class="emptyst">Nenhum equipamento.</div>';
   };
   v.innerHTML=`<div class="pagehead between"><div><h1>${esc(navEquip())}</h1><p>O número de série (NS) é a identidade permanente do ${esc(eqLabel().toLowerCase())}. Cadastro único; o histórico acompanha o NS mesmo em troca de cliente.</p></div>
-    ${can("criar")?`<a class="btn primary" href="#/equipamentos/novo">+ Cadastrar NS</a>`:""}</div>
+    ${can("criar")?`<div class="actionbar"><a class="btn primary" href="#/equipamentos/novo">+ Cadastrar NS</a><button type="button" class="btn" id="impEq">Importar planilha</button><input type="file" id="impEqFile" accept=".csv,.txt,text/csv" hidden></div>`:""}</div>
   <div class="row" style="margin-bottom:12px"><div class="searchbar"><span class="ic">⌕</span><input id="q" placeholder="Buscar por NS, modelo, cliente…"></div></div>
   <div class="chips" style="margin-bottom:14px"><button class="chip on" data-s="">Todos</button>${STATUS_EQUIP.map(s=>`<button class="chip" data-s="${s}">${s}</button>`).join("")}</div>
   <div class="panel"><div class="list" id="elist"></div></div>`;
   v.querySelector("#q").oninput=e=>{q=e.target.value;draw();};
   v.querySelectorAll(".chip").forEach(ch=>ch.onclick=()=>{v.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));ch.classList.add("on");fstatus=ch.dataset.s;draw();});
+  const arq=v.querySelector("#impEqFile");
+  v.querySelector("#impEq")&&(v.querySelector("#impEq").onclick=()=>{arq.value="";arq.click();});
+  arq&&(arq.onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    if(f.size>2*1024*1024)return toast("Planilha muito grande (máx. 2 MB).");
+    const rd=new FileReader();rd.onload=()=>abrirImportEquip(rd.result);rd.readAsText(f);
+  });
   draw();
 };
 function equipDetalhe(v,id){
