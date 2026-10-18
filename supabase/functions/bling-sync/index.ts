@@ -139,7 +139,7 @@ async function blingDetalheOS(id: number, headers: Record<string, string>) {
   return b?.data ?? null;
 }
 
-async function syncOrdens(empresaId: string, headers: Record<string, string>, contatos: Promise<{ ids: Set<string> }>) {
+async function syncOrdens(empresaId: string, headers: Record<string, string>, contatos: Promise<{ ids: Set<string>; autoExcluidos: Map<string, any> }>) {
   const [itens, existentes] = await Promise.all([
     blingList("/ordens/servico", headers, {}),
     carregarExistentes("ordens", empresaId, "bling-os-"),
@@ -201,12 +201,18 @@ async function syncOrdens(empresaId: string, headers: Record<string, string>, co
   // Toda OS precisa mostrar o nome do cliente. Se o contato da OS não veio na lista de contatos
   // (lista longa, contato de outro tipo etc.), cria o cliente na hora com o nome que a própria OS
   // traz. Espera a sincronização de contatos terminar antes, para nunca sobrescrever dados completos.
-  const { ids } = await contatos;
+  const { ids, autoExcluidos } = await contatos;
   const novos = new Map<string, any>();
   for (const os of itens) {
     const cid = os.contato?.id;
     if (!cid) continue;
     const id = `bling-cli-${cid}`;
+    // um contato ocultado por ser fornecedor mas que ganhou uma OS volta a aparecer (a OS precisa do nome)
+    if (autoExcluidos.has(id) && !novos.has(id)) {
+      const { excluido: _x, ...resto } = autoExcluidos.get(id);
+      novos.set(id, { id, empresa_id: empresaId, dados: resto, atualizado_em: new Date().toISOString() });
+      continue;
+    }
     if (ids.has(id) || novos.has(id)) continue;
     const nome = String(os.contato?.nome ?? "").trim() || `Contato ${cid}`;
     novos.set(id, {
@@ -224,36 +230,101 @@ async function syncOrdens(empresaId: string, headers: Record<string, string>, co
 }
 
 const MAX_PAG_CONTATOS = 60; // 60 páginas x 100 = até 6.000 contatos por sincronização
+
+// Fornecedores NÃO são clientes. No Bling um contato pode ter vários tipos (Cliente, Fornecedor...):
+// só tratamos como fornecedor quem é "Fornecedor" e NÃO é também "Cliente". Se qualquer passo falhar
+// (tipo não encontrado, erro de rede, limite de chamadas), devolve null e nada é filtrado nessa rodada.
+async function listaEstrita(path: string, headers: Record<string, string>, extra: Record<string, string>) {
+  const out: any[] = [];
+  for (let pagina = 1; pagina <= MAX_PAG_CONTATOS; pagina++) {
+    const qs = new URLSearchParams({ pagina: String(pagina), limite: "100", ...extra });
+    const r = await blingFetch(`${API}${path}?${qs}`, headers);
+    if (!r.ok) { console.error("lista estrita erro", path, r.status); return null; }
+    const page = (await r.json().catch(() => ({ data: [] }))).data || [];
+    out.push(...page);
+    if (page.length < 100) break;
+    await new Promise((res) => setTimeout(res, 300));
+  }
+  return out;
+}
+const semAcento = (s: unknown) => String(s ?? "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
+
+async function fornecedoresPuros(headers: Record<string, string>): Promise<Set<string> | null> {
+  const rt = await blingFetch(`${API}/contatos/tipos`, headers);
+  if (!rt.ok) { console.error("tipos de contato erro", rt.status); return null; }
+  const tipos: any[] = (await rt.json().catch(() => ({ data: [] }))).data || [];
+  const forn = tipos.find((t) => semAcento(t.descricao).startsWith("fornecedor"));
+  const cli = tipos.find((t) => semAcento(t.descricao) === "cliente");
+  if (!forn || !cli) return null;
+  const fs = await listaEstrita("/contatos", headers, { criterio: "1", idTipoContato: String(forn.id) });
+  if (!fs || !fs.length) return null;
+  const cs = await listaEstrita("/contatos", headers, { criterio: "1", idTipoContato: String(cli.id) });
+  if (!cs || !cs.length) return null; // sem a lista de clientes não dá para separar os que são os dois
+  const clientes = new Set(cs.map((x: any) => String(x.id)));
+  return new Set(fs.map((x: any) => String(x.id)).filter((id: string) => !clientes.has(id)));
+}
+
+// Clientes que já têm OS ou equipamento no Assist nunca são ocultados (null = não deu para conferir).
+async function clientesEmUso(empresaId: string): Promise<Set<string> | null> {
+  const s = new Set<string>();
+  for (const tabela of ["ordens", "equipamentos"]) {
+    for (let de = 0; ; de += 1000) {
+      const { data, error } = await admin.from(tabela).select("cid:dados->>clienteId")
+        .eq("empresa_id", empresaId).order("id").range(de, de + 999);
+      if (error) { console.error("em uso", tabela, error); return null; }
+      for (const r of (data || []) as any[]) if (r.cid) s.add(String(r.cid));
+      if (!data || data.length < 1000) break;
+    }
+  }
+  return s;
+}
+
 async function syncContatos(empresaId: string, headers: Record<string, string>) {
-  const [itens, existentes] = await Promise.all([
+  const [itens, existentes, forn, emUso] = await Promise.all([
     blingList("/contatos", headers, { criterio: "1" }, MAX_PAG_CONTATOS),
     carregarExistentes("clientes", empresaId, "bling-cli-"),
+    fornecedoresPuros(headers),
+    clientesEmUso(empresaId),
   ]);
-  const rows = itens.filter((c: any) => c.situacao !== "E").map((c: any) => {
+  const filtrar = !!forn && !!emUso;
+  let ocultos = 0;
+  const rows: any[] = [];
+  const autoExcluidos = new Map<string, any>(); // ocultados por serem fornecedores (a OS pode trazê-los de volta)
+  for (const c of itens.filter((c: any) => c.situacao !== "E")) {
     const id = `bling-cli-${c.id}`;
     const antigo = existentes.get(id) || null;
-    return {
-      id,
-      empresa_id: empresaId,
-      dados: {
-        ...(antigo || {
-          fantasia: c.nome || "(sem nome)", email: "", cep: "", endereco: "", cidade: "",
-          contatos: "", relacao: "assistencia",
-        }),
-        razao: c.nome || antigo?.razao || "(sem nome)",
-        doc: c.numeroDocumento || antigo?.doc || "",
-        tel: c.telefone || c.celular || antigo?.tel || "",
-        blingId: c.codigo || String(c.id),
-        origem: "bling",
-      },
-      atualizado_em: new Date().toISOString(),
+    const ehFornecedor = filtrar && forn!.has(String(c.id));
+    // fornecedor novo: nem entra. Fornecedor que já está em uso (OS/equipamento) fica como cliente.
+    if (ehFornecedor && !antigo && !emUso!.has(id)) { ocultos++; continue; }
+    const dados: any = {
+      ...(antigo || {
+        fantasia: c.nome || "(sem nome)", email: "", cep: "", endereco: "", cidade: "",
+        contatos: "", relacao: "assistencia",
+      }),
+      razao: c.nome || antigo?.razao || "(sem nome)",
+      doc: c.numeroDocumento || antigo?.doc || "",
+      tel: c.telefone || c.celular || antigo?.tel || "",
+      blingId: c.codigo || String(c.id),
+      origem: "bling",
     };
-  });
+    // fornecedor que já era "cliente": exclui (lógica, dá para restaurar) uma única vez. Se alguém
+    // restaurar à mão depois, fornecedorAuto já está marcado e a sincronização não oculta de novo.
+    if (ehFornecedor && antigo && !emUso!.has(id) && !antigo.fornecedorAuto && !antigo.excluido) {
+      dados.excluido = { ts: new Date().toISOString(), usuario: "Sincronização Bling", motivo: "Contato do tipo Fornecedor no Bling (não é cliente)" };
+      dados.fornecedorAuto = true;
+      ocultos++;
+    }
+    if (dados.excluido && dados.fornecedorAuto) autoExcluidos.set(id, dados);
+    rows.push({ id, empresa_id: empresaId, dados, atualizado_em: new Date().toISOString() });
+  }
   const mudadas = soMudadas(rows, existentes);
   await upsertLote("clientes", mudadas);
   // ids de todos os clientes que já existem (antes + agora): syncOrdens usa para saber quem falta
   const ids = new Set<string>([...existentes.keys(), ...rows.map((r: any) => r.id)]);
-  return { n: rows.length, alterados: mudadas.length, ids, truncado: itens.length >= MAX_PAG_CONTATOS * 100 };
+  return {
+    n: rows.length, alterados: mudadas.length, ids, autoExcluidos, ocultos, filtrou: filtrar,
+    truncado: itens.length >= MAX_PAG_CONTATOS * 100,
+  };
 }
 
 async function syncProdutos(empresaId: string, headers: Record<string, string>) {
@@ -321,6 +392,7 @@ async function sincronizarEmpresa(empresaId: string) {
     }).eq("id", empresaId);
     return {
       ok: true, os: ordens.n, clientes: clientes.n, produtos: produtos.n, equipamentos: ordens.equip,
+      fornecedores_ocultos: clientes.ocultos, filtro_fornecedor: clientes.filtrou,
       alterados: ordens.alterados + clientes.alterados + produtos.alterados,
     };
   } catch (e) {

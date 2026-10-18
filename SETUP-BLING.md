@@ -137,6 +137,22 @@ Se não atualizar: veja o resultado das chamadas com
 "Verify JWT" ainda ligado. Para ver se o agendamento está rodando:
 `select status, return_message, start_time from cron.job_run_details order by start_time desc limit 5;`
 
+## Fornecedores não viram clientes
+
+No Bling todo mundo é um "contato" e pode ter mais de um tipo (Cliente, Fornecedor…). A
+sincronização consulta os tipos e **não importa quem é só Fornecedor** (quem é Fornecedor **e**
+Cliente continua como cliente). Na primeira sincronização depois de publicar a função, os
+fornecedores que já estavam em Clientes são **excluídos (exclusão lógica)** — somem das listas e
+podem ser restaurados em Configurações → Registros excluídos.
+
+Proteções: nunca oculta cliente que já tenha OS ou equipamento no Assist; se alguém restaurar um
+fornecedor à mão, a sincronização não oculta de novo; um fornecedor que ganhar uma OS volta a aparecer
+(a OS precisa do nome). Se o Bling não responder na consulta de tipos, essa rodada não filtra nada
+(nunca esconde por engano) e tenta de novo 30 min depois.
+
+Conferir (SQL Editor): quantos foram ocultados
+`select count(*) from clientes where dados->>'fornecedorAuto' = 'true' and dados ? 'excluido';`
+
 ## Se der erro
 
 - **"Sem permissão" ao conectar:** confira se o Redirect URI no Bling
