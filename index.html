@@ -1706,6 +1706,66 @@ ROUTES.painel=v=>{
 };
 
 /* ============ CLIENTES ============ */
+/* ---------- excluir clientes a partir de uma planilha (ex.: lista de fornecedores) ----------
+   CSV com as colunas "nome" e "documento". Casa por CPF/CNPJ (igual) ou pelo nome (cadastro sem documento).
+   Mostra a conferência antes; a exclusão é a lógica de sempre (restaurável em Configurações). */
+function analisarExclusaoClientes(texto){
+  const linhas=lerCSV(texto);if(linhas.length<2)return{erro:"A planilha está vazia."};
+  const cab=linhas[0].map(chaveCol);
+  const iNome=cab.findIndex(h=>["nome","razaosocial","razao","fornecedor","cliente"].includes(h));
+  const iDoc=cab.findIndex(h=>["documento","doc","cnpj","cpf","cpfcnpj","cnpjcpf"].includes(h));
+  if(iNome<0&&iDoc<0)return{erro:"A primeira linha precisa ter a coluna \"nome\" e/ou \"documento\"."};
+  const dig=s=>String(s||"").replace(/\D/g,"");
+  const k1=s=>semAcento(s).replace(/[^a-z0-9]/g,""),k2=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+  const docs=new Set(),nomes=new Set();
+  for(const l of linhas.slice(1)){
+    const d=iDoc>=0?dig(l[iDoc]):"";if(d.length>=11)docs.add(d);
+    const n=iNome>=0?String(l[iNome]||"").trim():"";if(n){nomes.add(k1(n));nomes.add(k2(n));}
+  }
+  const conta=arr=>{const m={};arr.filter(ativo).forEach(x=>{if(x.clienteId)m[x.clienteId]=(m[x.clienteId]||0)+1;});return m;};
+  const nEq=conta(DB.equipamentos),nOS=conta(DB.ordens),nMn=conta(DB.manutencoes);
+  const rows=[];
+  for(const c of DB.clientes.filter(ativo)){
+    const d=dig(c.doc),temDoc=d.length>=11,nm=[c.razao,c.fantasia].filter(Boolean);
+    const casaNome=nm.some(n=>{const a=k1(n),b=k2(n);return(a.length>=7&&nomes.has(a))||(b.length>=7&&nomes.has(b));});
+    let tipo="";
+    if(temDoc&&docs.has(d))tipo="doc";
+    else if(casaNome)tipo=temDoc?"nomedoc":"nome";
+    if(!tipo)continue;
+    const eq=nEq[c.id]||0,os=(nOS[c.id]||0)+(nMn[c.id]||0);
+    const estado=(eq||os)?"uso":tipo;
+    rows.push({c,tipo,estado,eq,os,marcado:estado==="doc"||estado==="nome"&&c.origem==="bling"});
+  }
+  const ordem={doc:0,nome:1,nomedoc:2,uso:3};
+  rows.sort((a,b)=>ordem[a.estado]-ordem[b.estado]||porNome(x=>x.c.razao||x.c.fantasia)(a,b));
+  return{rows,total:linhas.length-1};
+}
+const ESTADO_EXCL={doc:["good","Mesmo CPF/CNPJ"],nome:["good","Mesmo nome (sem CNPJ)"],nomedoc:["warn","Mesmo nome, CNPJ diferente"],uso:["crit","Tem equipamento/OS — mantido"]};
+function abrirExclusaoClientes(texto){
+  const a=analisarExclusaoClientes(texto);if(a.erro)return toast(a.erro);
+  const rows=a.rows;
+  if(!rows.length)return toast("Nenhum cliente ativo bate com essa planilha. Nada a excluir.");
+  const podem=r=>r.estado!=="uso";
+  const conta=()=>rows.filter(r=>podem(r)&&r.marcado).length;
+  modal({title:"Excluir clientes da planilha",wide:true,body:`
+    <p class="small muted" style="margin:0 0 10px">${rows.length} cadastro(s) ativo(s) batem com a planilha (${a.total} linhas). Marque o que deve ser excluído. Clientes com equipamento ou OS não podem ser marcados. A exclusão pode ser desfeita em Configurações → Registros excluídos.</p>
+    <div class="tblwrap" style="max-height:52vh;overflow:auto"><table class="tbl"><thead><tr><th></th><th>Cliente</th><th>CPF/CNPJ</th><th>Origem</th><th>Equip. / OS</th><th>Situação</th></tr></thead><tbody>
+    ${rows.map((r,i)=>`<tr><td><input type="checkbox" data-x="${i}" style="width:auto;min-height:0"${r.marcado?" checked":""}${podem(r)?"":" disabled"}></td>
+      <td class="small">${esc(r.c.razao||r.c.fantasia)}</td><td class="mono small">${esc(r.c.doc||"—")}</td>
+      <td class="small">${r.c.origem==="bling"?"Bling":"Assist"}</td><td class="small">${r.eq} / ${r.os}</td>
+      <td><span class="pill ${ESTADO_EXCL[r.estado][0]}">${esc(ESTADO_EXCL[r.estado][1])}</span></td></tr>`).join("")}
+    </tbody></table></div>`,
+    footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn danger" id="okExcl"></button>`});
+  const atualiza=()=>{const n=conta(),b=$("#okExcl");b.textContent=n?`Excluir ${n} cliente${n>1?"s":""}`:"Nada marcado";b.disabled=!n;};
+  document.querySelectorAll("#modalbg input[data-x]").forEach(cb=>cb.onchange=()=>{rows[+cb.dataset.x].marcado=cb.checked;atualiza();});
+  atualiza();
+  $("#okExcl").onclick=()=>{
+    const sel=rows.filter(r=>podem(r)&&r.marcado);
+    sel.forEach(r=>{r.c.excluido={ts:nowISO(),usuario:auditUser(),motivo:"Fornecedor / fora da carteira (planilha)"};r.c.fornecedorAuto=true;});
+    audit("Exclusão","Cliente","",sel.length+" cliente(s) excluído(s) por planilha");persist();closeModal();
+    toast(sel.length+" cliente(s) excluído(s).");router();
+  };
+}
 ROUTES.clientes=(v,rest)=>{
   if(rest[0]&&rest[0]!=="novo")return clienteDetalhe(v,rest[0]);
   if(rest[0]==="novo")return clienteForm(v,null);
@@ -1723,12 +1783,20 @@ ROUTES.clientes=(v,rest)=>{
       </a>`;}).join("")||'<div class="emptyst">Nenhum cliente encontrado.</div>';
   };
   v.innerHTML=`<div class="pagehead between"><div><h1>Clientes</h1><p>Pesquise por nome/razão social, CPF/CNPJ, código Bling ou cidade.</p></div>
-    ${can("criar")?`<a class="btn primary" href="#/clientes/novo">+ Novo cliente</a>`:""}</div>
+    <div class="actionbar">${can("criar")?`<a class="btn primary" href="#/clientes/novo">+ Novo cliente</a>`:""}
+      ${can("excluir","clientes")?`<button type="button" class="btn" id="exclCli">Excluir por planilha</button><input type="file" id="exclCliFile" accept=".csv,.txt,text/csv" hidden>`:""}</div></div>
     <div class="row" style="margin-bottom:14px">
       <div class="searchbar"><span class="ic">⌕</span><input id="q" placeholder="Buscar cliente…"></div>
     </div>
     <div class="panel"><div class="list" id="clist"></div></div>`;
   v.querySelector("#q").oninput=e=>{q=e.target.value;draw();};
+  const arqX=v.querySelector("#exclCliFile");
+  v.querySelector("#exclCli")&&(v.querySelector("#exclCli").onclick=()=>{arqX.value="";arqX.click();});
+  arqX&&(arqX.onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    if(f.size>2*1024*1024)return toast("Planilha muito grande (máx. 2 MB).");
+    const rd=new FileReader();rd.onload=()=>abrirExclusaoClientes(rd.result);rd.readAsText(f);
+  });
   draw();
 };
 function clienteDetalhe(v,id){
