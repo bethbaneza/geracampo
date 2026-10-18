@@ -927,6 +927,7 @@ function checarRetornoBling(){
   const st=p.get("bling");
   if(!st)return;
   if(st==="conectado")toast("Bling conectado! Já pode sincronizar em Configurações.");
+  else if(st==="instalado")toast("Autorização recebida! Agora clique em Conectar ao Bling para concluir.");
   else toast("Não deu para conectar ao Bling"+(p.get("msg")?": "+p.get("msg"):".")+" Tente de novo.");
   try{history.replaceState({},"",location.pathname+location.hash);}catch(e){}
 }
@@ -942,7 +943,7 @@ function diasTrial(){
   return Math.ceil((new Date(EMPRESA.trial_ate).getTime()-Date.now())/86400000);
 }
 /* telas liberadas quando o trial acaba (plano "free") */
-const ROTAS_FREE=["painel","jornada","manutencoes","clientes","equipamentos","mais","config","auditoria","assinar","conta"];
+const ROTAS_FREE=["painel","jornada","manutencoes","clientes","equipamentos","mais","config","auditoria","assinar","conta","homologacao"];
 function rotaLiberada(r){ return planoEfetivo()!=="free" || ROTAS_FREE.includes(r); }
 function persist(){
   persistLocal();
@@ -1766,6 +1767,28 @@ function abrirExclusaoClientes(texto){
     toast(sel.length+" cliente(s) excluído(s).");router();
   };
 }
+/* ---------- teste de homologação do Bling (tela escondida #/homologacao, só administrador) ----------
+   Roda a sequência exigida pelo Bling (GET, POST, PUT, PATCH, DELETE em /homologacao/produtos) pela função bling-sync. */
+ROUTES.homologacao=(v)=>{
+  if(!PERFIL||PERFIL.papel!=="admin"||MODO_DEMO)return v.innerHTML='<div class="alertbox crit">Só o administrador pode abrir esta tela.</div>';
+  v.innerHTML=`<div class="pagehead"><h1>Teste de homologação do Bling</h1>
+    <p>Roda a sequência de 5 chamadas que o Bling exige para aprovar o aplicativo. Use com a conexão do Bling já feita (Configurações). Depois, volte ao painel do aplicativo no Bling e confirme a etapa de teste.</p></div>
+    <div class="card pad"><div class="actionbar"><button class="btn primary" id="hmRun">Executar teste</button></div>
+    <div id="hmOut" style="margin-top:14px"></div></div>`;
+  v.querySelector("#hmRun").onclick=async()=>{
+    const b=v.querySelector("#hmRun"),out=v.querySelector("#hmOut");b.disabled=true;b.textContent="Executando…";out.innerHTML="";
+    try{
+      const{data,error}=await supa.functions.invoke("bling-sync",{body:{acao:"homologacao"}});
+      if(error){let d=error.message||String(error);try{if(error.context&&error.context.text)d=(await error.context.text())||d;}catch(e2){}throw new Error(d);}
+      const ps=(data&&data.passos)||[];
+      out.innerHTML=(data&&data.ok
+        ?'<div class="alertbox good"><span>✓</span><div>Teste concluído em '+(data.total_ms/1000).toFixed(1)+' s. Agora confirme no painel do Bling.</div></div>'
+        :'<div class="alertbox crit"><span>!</span><div>'+esc((data&&data.msg)||"Falhou.")+'</div></div>')
+        +'<div class="list" style="margin-top:12px">'+ps.map(p=>`<div class="item"><div><div class="t">${esc(p.passo)}</div><div class="d">resposta ${p.status} · ${p.ms} ms${p.renovouToken?" · token renovado":""}</div></div></div>`).join("")+'</div>';
+    }catch(e){out.innerHTML='<div class="alertbox crit"><span>!</span><div>'+esc(e.message||e)+'</div></div>';}
+    finally{b.disabled=false;b.textContent="Executar teste";}
+  };
+};
 ROUTES.clientes=(v,rest)=>{
   if(rest[0]&&rest[0]!=="novo")return clienteDetalhe(v,rest[0]);
   if(rest[0]==="novo")return clienteForm(v,null);

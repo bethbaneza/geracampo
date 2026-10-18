@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Banheza Assist — Conexão com o Bling</title>
+<style>
+:root{
+  --ground:#f3f7f5; --card:#ffffff; --ink:#0b2a22; --ink-2:#38534a; --line:#dbe6e1;
+  --accent:#00c868; --accent-deep:#008048; --on-accent:#002018; --soft:#d5f7e3; --crit:#b3261e; --crit-soft:#fde8e6;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--ground:#0b1a15;--card:#10261e;--ink:#e9f3ee;--ink-2:#adc4ba;--line:#274236;--accent:#3ed87f;--accent-deep:#3ed87f;--soft:#0f3527;--crit:#ff8a80;--crit-soft:#3a1714}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink-2);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;display:grid;place-items:center;padding:24px 16px}
+main{width:100%;max-width:520px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:32px 28px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:22px}
+.brand img{width:36px;height:36px;border-radius:9px}
+.brand b{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink)}
+.brand b span{color:var(--accent-deep)}
+.badge{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:22px;font-weight:700;background:var(--soft);color:var(--accent-deep);margin-bottom:14px}
+.erro .badge{background:var(--crit-soft);color:var(--crit)}
+h1{margin:0 0 10px;font-size:22px;line-height:1.25;color:var(--ink);text-wrap:balance}
+p{margin:0 0 14px}
+ol{margin:0 0 22px;padding-left:22px}
+li{margin-bottom:8px}
+.btn{display:inline-block;background:var(--accent);color:var(--on-accent);font-weight:700;text-decoration:none;padding:12px 20px;border-radius:10px}
+.btn:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+small{display:block;margin-top:20px;color:var(--ink-2);font-size:13px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main id="m">
+  <div class="brand"><img src="assets/mark-green.png" alt=""><b>Banheza <span>Assist</span></b></div>
+
+  <section id="s-instalado" hidden>
+    <div class="badge" aria-hidden="true">✓</div>
+    <h1>Autorização recebida!</h1>
+    <p>O Bling liberou o Banheza Assist. Falta só um passo, feito dentro do app, para ligar a sua conta:</p>
+    <ol>
+      <li>Entre no Banheza Assist com o seu login (ou crie a sua conta gratuita).</li>
+      <li>Abra <b>Configurações → Integração com o Bling</b>.</li>
+      <li>Clique em <b>Conectar ao Bling</b> e confirme.</li>
+    </ol>
+    <a class="btn" href="/">Abrir o Banheza Assist</a>
+  </section>
+
+  <section id="s-conectado" hidden>
+    <div class="badge" aria-hidden="true">✓</div>
+    <h1>Bling conectado!</h1>
+    <p>A conexão foi feita. Abra o Banheza Assist e clique em <b>Sincronizar agora</b> em Configurações para trazer suas ordens de serviço, clientes e produtos.</p>
+    <a class="btn" href="/#/config">Abrir o Banheza Assist</a>
+  </section>
+
+  <section id="s-erro" class="erro" hidden>
+    <div class="badge" aria-hidden="true">!</div>
+    <h1>Não deu para conectar ao Bling</h1>
+    <p id="msg">Algo saiu diferente do esperado durante a autorização.</p>
+    <p>Nada foi alterado na sua conta do Bling. Abra o Banheza Assist e tente de novo em <b>Configurações → Integração com o Bling → Conectar ao Bling</b>.</p>
+    <a class="btn" href="/#/config">Abrir o Banheza Assist</a>
+  </section>
+
+  <small>O Banheza Assist só lê ordens de serviço, contatos e produtos do Bling. Você pode desconectar quando quiser, no app ou no painel de aplicativos do Bling.</small>
+</main>
+<script>
+(function(){
+  var p=new URLSearchParams(location.search),st=p.get("status");
+  var id=st==="instalado"?"s-instalado":st==="conectado"?"s-conectado":"s-erro";
+  document.getElementById(id).hidden=false;
+  var m=p.get("msg");if(m&&id==="s-erro")document.getElementById("msg").textContent=m;
+})();
+</script>
+</body>
+</html>

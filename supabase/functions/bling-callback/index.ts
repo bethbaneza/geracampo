@@ -32,6 +32,15 @@ function redirect(params: Record<string, string>) {
   return new Response(null, { status: 302, headers: { Location: `${APP_ORIGEM}/?${qs}#/config` } });
 }
 
+// Página de retorno amigável (estática, no próprio app) para quem NÃO veio do botão "Conectar ao Bling"
+// do app — por exemplo, quem instalou o aplicativo pela Central de Extensões ou por um link de convite do Bling.
+function paginaRetorno(params: Record<string, string>) {
+  const qs = new URLSearchParams(params).toString();
+  return new Response(null, { status: 302, headers: { Location: `${APP_ORIGEM}/bling-retorno.html?${qs}` } });
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 Deno.serve(async (req: Request) => {
   try {
     const url = new URL(req.url);
@@ -39,8 +48,13 @@ Deno.serve(async (req: Request) => {
     const empresaId = url.searchParams.get("state");
     const erroBling = url.searchParams.get("error");
 
-    if (erroBling) return redirect({ bling: "erro", msg: "autorização recusada" });
-    if (!code || !empresaId) return redirect({ bling: "erro", msg: "resposta incompleta do Bling" });
+    if (erroBling) return paginaRetorno({ status: "erro", msg: "A autorização foi recusada no Bling." });
+    if (!code) return paginaRetorno({ status: "erro", msg: "O Bling não enviou o código de autorização." });
+    // Sem "state" válido = a autorização não começou dentro do Banheza Assist (instalação pelo Bling).
+    // Não usamos o código: a pessoa conclui conectando de dentro do app, em Configurações.
+    if (!empresaId || !UUID.test(empresaId)) return paginaRetorno({ status: "instalado" });
+    const { data: emp } = await admin.from("empresas").select("id").eq("id", empresaId).maybeSingle();
+    if (!emp) return paginaRetorno({ status: "instalado" });
     if (!CLIENT_ID || !CLIENT_SECRET) return redirect({ bling: "erro", msg: "app não configurado" });
 
     const basic = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);

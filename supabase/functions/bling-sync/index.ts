@@ -403,6 +403,62 @@ async function sincronizarEmpresa(empresaId: string) {
   }
 }
 
+// Teste de homologação do Bling: 5 chamadas em sequência à API "/homologacao/produtos" (GET, POST, PUT, PATCH, DELETE),
+// passando adiante o hash do cabeçalho x-bling-homologacao de uma resposta para a próxima. Em uma das etapas o Bling
+// invalida o access token de propósito: ao receber 401 renovamos com o refresh token e repetimos a mesma chamada.
+// Limites do Bling: no máximo 10 s no total e 2 s entre chamadas — por isso nada de pausas aqui.
+async function homologar(empresaId: string) {
+  const { data: conn } = await admin.from("bling_conexoes").select("*").eq("empresa_id", empresaId).maybeSingle();
+  if (!conn) return { ok: false, msg: "Bling não conectado" };
+  let access = conn.access_token as string;
+  let refresh = conn.refresh_token as string;
+  const renovar = async () => {
+    const t = await refreshToken(refresh);
+    if (!t) throw new Error("não consegui renovar o token — reconecte o Bling");
+    access = t.access_token; refresh = t.refresh_token || refresh;
+    await admin.from("bling_conexoes").update({
+      access_token: access, refresh_token: refresh,
+      expira_em: new Date(Date.now() + (Number(t.expires_in) || 3600) * 1000).toISOString(),
+      atualizado_em: new Date().toISOString(),
+    }).eq("empresa_id", empresaId);
+  };
+  const passos: { passo: string; status: number; renovouToken: boolean; ms: number }[] = [];
+  let hash = "";
+  const t0 = Date.now();
+  const chamar = async (passo: string, metodo: string, caminho: string, corpo?: unknown) => {
+    for (let tentativa = 0; tentativa < 2; tentativa++) {
+      const h: Record<string, string> = { Authorization: `Bearer ${access}`, Accept: "application/json" };
+      if (corpo !== undefined) h["Content-Type"] = "application/json";
+      if (hash) h["x-bling-homologacao"] = hash;
+      const ini = Date.now();
+      const r = await fetch(`${API}${caminho}`, { method: metodo, headers: h, body: corpo !== undefined ? JSON.stringify(corpo) : undefined });
+      if (r.status === 401 && tentativa === 0) { await renovar(); continue; }
+      const novo = r.headers.get("x-bling-homologacao");
+      if (novo) hash = novo;
+      const txt = await r.text();
+      passos.push({ passo, status: r.status, renovouToken: tentativa === 1, ms: Date.now() - ini });
+      if (!r.ok) throw new Error(`${passo}: erro ${r.status} ${txt.slice(0, 300)}`);
+      try { return JSON.parse(txt); } catch { return null; }
+    }
+    return null;
+  };
+  try {
+    if (!conn.expira_em || new Date(conn.expira_em).getTime() < Date.now() + 60000) await renovar();
+    const g = await chamar("1 GET produto", "GET", "/homologacao/produtos");
+    const dados = g?.data;
+    if (!dados) throw new Error("1 GET produto: resposta sem dados");
+    const c = await chamar("2 POST produto", "POST", "/homologacao/produtos", { nome: dados.nome, preco: dados.preco, codigo: dados.codigo });
+    const id = c?.data?.id;
+    if (!id) throw new Error("2 POST produto: resposta sem id");
+    await chamar("3 PUT produto", "PUT", `/homologacao/produtos/${id}`, { nome: "Copo", preco: dados.preco, codigo: dados.codigo });
+    await chamar("4 PATCH situação", "PATCH", `/homologacao/produtos/${id}/situacoes`, { situacao: "I" });
+    await chamar("5 DELETE produto", "DELETE", `/homologacao/produtos/${id}`);
+    return { ok: true, total_ms: Date.now() - t0, passos };
+  } catch (e) {
+    return { ok: false, msg: (e as Error).message, total_ms: Date.now() - t0, passos };
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   try {
@@ -428,6 +484,8 @@ Deno.serve(async (req: Request) => {
     const { data: perfil } = await admin.from("perfis").select("empresa_id,papel,ativo").eq("id", userData.user.id).maybeSingle();
     if (!perfil || !perfil.ativo || !perfil.empresa_id) return ok({ ok: false, msg: "perfil inválido" });
     if (perfil.papel !== "admin") return ok({ ok: false, msg: "só o administrador sincroniza com o Bling" });
+    const corpo = await req.json().catch(() => ({}));
+    if (corpo?.acao === "homologacao") return ok(await homologar(perfil.empresa_id as string));
     return ok(await sincronizarEmpresa(perfil.empresa_id as string));
   } catch (e) {
     console.error("bling-sync falhou:", e);
