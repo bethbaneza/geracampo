@@ -92,6 +92,15 @@ Deno.serve(async (req: Request) => {
       bling_ultimo_erro: null,
     }).eq("id", empresaId);
 
+    // Descobre QUAL conta do Bling acabou de ser conectada (para o app mostrar o nome). Nunca atrapalha a conexão.
+    try {
+      const r = await fetch("https://api.bling.com.br/Api/v3/empresas/me/dados-basicos", {
+        headers: { Authorization: `Bearer ${tok.access_token}`, Accept: "application/json" },
+      });
+      const d = r.ok ? (await r.json().catch(() => null))?.data : null;
+      await admin.from("empresas").update({ bling_conta_nome: d?.nome ?? null, bling_conta_cnpj: d?.cnpj ?? null }).eq("id", empresaId);
+    } catch (e) { console.error("identificar conta:", e); }
+
     return redirect({ bling: "conectado" });
   } catch (e) {
     console.error("bling-callback falhou:", e);

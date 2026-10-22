@@ -356,6 +356,18 @@ async function syncProdutos(empresaId: string, headers: Record<string, string>) 
   return { n: rows.length, alterados: mudadas.length };
 }
 
+// Qual conta do Bling está conectada? (nome e CNPJ). Serve para o usuário perceber se conectou a conta errada.
+// Se o Bling não liberar essa informação (permissão do aplicativo), simplesmente não grava nada.
+async function identificarConta(empresaId: string, headers: Record<string, string>) {
+  try {
+    const r = await blingFetch(`${API}/empresas/me/dados-basicos`, headers);
+    if (!r.ok) { console.error("dados-basicos", r.status); return; }
+    const d = (await r.json().catch(() => null))?.data;
+    if (!d) return;
+    await admin.from("empresas").update({ bling_conta_nome: d.nome ?? null, bling_conta_cnpj: d.cnpj ?? null }).eq("id", empresaId);
+  } catch (e) { console.error("identificarConta", e); }
+}
+
 // Sincroniza UMA empresa (usada pelo botão do app e pelo agendamento automático).
 async function sincronizarEmpresa(empresaId: string) {
   const { data: conn } = await admin.from("bling_conexoes").select("*").eq("empresa_id", empresaId).maybeSingle();
@@ -378,6 +390,7 @@ async function sincronizarEmpresa(empresaId: string) {
     }
 
     const headers = { Authorization: `Bearer ${accessToken}`, Accept: "application/json" };
+    await identificarConta(empresaId, headers);   // guarda o nome da conta do Bling conectada (aparece em Configurações)
     // os 3 recursos em paralelo — sequencial estourava o tempo máximo de execução
     const pContatos = syncContatos(empresaId, headers);
     const [ordens, clientes, produtos] = await Promise.all([

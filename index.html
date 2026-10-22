@@ -3761,7 +3761,9 @@ ROUTES.config=(v)=>{
     <p class="small muted" style="margin:0 0 12px">Puxa Ordens de Serviço, Clientes e Produtos direto do Bling — sem digitar nem importar PDF.</p>
     ${!adm?`<p class="small muted">Só o administrador conecta e sincroniza com o Bling.</p>`:!BLING_CLIENT_ID||BLING_CLIENT_ID.startsWith("[")?`
       <p class="small muted">A Banheza ainda está configurando essa integração. Em breve.</p>`:EMPRESA?.bling_conectado?`
+      <p class="small" style="margin:0 0 4px">Conta do Bling conectada: ${EMPRESA.bling_conta_nome?`<b>${esc(EMPRESA.bling_conta_nome)}</b>${EMPRESA.bling_conta_cnpj?" · CNPJ "+esc(EMPRESA.bling_conta_cnpj):""}`:`<span class="muted">ainda não identificada (aparece na próxima sincronização)</span>`}</p>
       <p class="small" style="margin:0 0 4px">${EMPRESA.bling_ultima_sync?"Última sincronização: "+fmtDT(EMPRESA.bling_ultima_sync):"Ainda não sincronizado."}</p>
+      <p class="small muted" style="margin:0 0 8px">Não é a conta certa? Clique em <b>Desconectar</b> e conecte de novo com o login do Bling da sua empresa.</p>
       <p class="small muted" style="margin:0 0 10px">Atualização automática: <b>${EMPRESA.bling_auto!==false?"ligada — a cada 30 minutos":"desligada"}</b>.</p>
       ${EMPRESA.bling_ultimo_erro?`<div class="alertbox" style="margin-bottom:10px"><span>!</span><div>${esc(EMPRESA.bling_ultimo_erro)}${/reconecte/i.test(EMPRESA.bling_ultimo_erro)?' <button type="button" class="btn sm primary" id="blingReconectar" style="margin-left:6px">Reconectar ao Bling</button>':""}</div></div>`:""}
       <div class="actionbar"><button class="btn primary sm" id="blingSync">Sincronizar agora</button><button class="btn sm" id="blingAuto">${EMPRESA.bling_auto!==false?"Desligar automática":"Ligar automática"}</button><button class="btn sm danger" id="blingDesc">Desconectar</button></div>`:`
@@ -3801,7 +3803,20 @@ ROUTES.config=(v)=>{
     audit("Edição","Identidade","main",cc.empresa);persist();
     renderNav();renderRole();toast("Identidade salva.");router();
   });
-  const irParaAutorizarBling=()=>{location.href=BLING_AUTH_URL+"?response_type=code&client_id="+encodeURIComponent(BLING_CLIENT_ID)+"&state="+encodeURIComponent(PERFIL.empresa_id);};
+  const abrirAutorizacaoBling=()=>{location.href=BLING_AUTH_URL+"?response_type=code&client_id="+encodeURIComponent(BLING_CLIENT_ID)+"&state="+encodeURIComponent(PERFIL.empresa_id);};
+  // antes de ir ao Bling: o aplicativo conecta a conta que estiver aberta no navegador, então avisa para conferir
+  const irParaAutorizarBling=()=>{
+    modal({title:"Antes de conectar ao Bling",body:`
+      <p style="margin:0 0 10px">O Bling vai conectar a conta que estiver <b>aberta neste navegador</b>.</p>
+      <ul class="small" style="line-height:1.7;margin:0 0 10px;padding-left:18px">
+        <li>Entre com o login do Bling da <b>sua empresa</b>.</li>
+        <li>Se já houver outra conta do Bling aberta (por exemplo, uma conta pessoal), <b>saia dela antes</b> ou use uma <b>janela anônima</b>.</li>
+        <li>Na tela do Bling, confira o nome da conta em <i>“Você autoriza … a acessar sua conta …”</i> antes de autorizar.</li>
+      </ul>
+      ${EMPRESA?.bling_conta_nome?`<p class="small muted" style="margin:0">Hoje conectada: <b>${esc(EMPRESA.bling_conta_nome)}</b>.</p>`:""}`,
+      footer:`<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="blingSeguir">Entendi, continuar</button>`});
+    $("#blingSeguir").onclick=abrirAutorizacaoBling;
+  };
   v.querySelector("#blingConectar")&&(v.querySelector("#blingConectar").onclick=irParaAutorizarBling);
   v.querySelector("#blingReconectar")&&(v.querySelector("#blingReconectar").onclick=irParaAutorizarBling);
   v.querySelector("#blingAuto")&&(v.querySelector("#blingAuto").onclick=async()=>{

@@ -163,3 +163,17 @@ Conferir (SQL Editor): quantos foram ocultados
 - Token de acesso do Bling dura poucas horas, mas o app renova sozinho
   usando o refresh token (que dura 30 dias) — só precisa reconectar se
   passar 30 dias sem sincronizar nenhuma vez.
+
+## Qual conta do Bling está conectada?
+
+Em **Configurações → Integração com o Bling** aparece o **nome e o CNPJ da conta do Bling conectada**. Serve
+para perceber na hora se o app conectou a conta errada (o Bling conecta a conta que estiver aberta no navegador).
+Antes de **Conectar/Reconectar**, o app mostra um aviso: entre com o login do Bling da sua empresa, saia de outras
+contas ou use uma janela anônima, e confira o nome da conta na tela de autorização do Bling.
+
+Para ativar:
+1. SQL Editor → cole `supabase-bling-conta.sql` → Run (a linha final precisa dizer **ok**).
+2. Edge Functions → **bling-sync** e **bling-callback**: cole o código novo (arquivos em `supabase/functions/`) e publique
+   (Verify JWT continua **desligado** nas duas).
+3. Em Configurações, clique em **Sincronizar agora**: o nome da conta aparece. (Se aparecer "ainda não identificada",
+   o Bling não liberou essa informação para o aplicativo — o resto da integração continua funcionando.)
